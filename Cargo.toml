@@ -1,0 +1,16 @@
+[package]
+name = "typed-codegen"
+version = "0.1.0"
+edition = "2021"
+description = "A library for type directed code generation"
+
+[dependencies]
+anyhow = "1.0.86"
+log = "0.4.21"
+env_logger = "0.5.0"
+ra_ap_hir = "0.0.217"
+ra_ap_ide = "0.0.217"
+ra_ap_load-cargo = "0.0.217"
+ra_ap_paths = "0.0.217"
+ra_ap_project_model = "0.0.217"
+ra_ap_vfs = "0.0.217"
