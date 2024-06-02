@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::{debug, trace};
 use ra_ap_hir::Crate;
-use ra_ap_ide::{AnalysisHost, RootDatabase};
+use ra_ap_ide::RootDatabase;
 use ra_ap_load_cargo::{load_workspace, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_paths::{AbsPathBuf, Utf8PathBuf};
 use ra_ap_project_model::{
@@ -95,11 +95,9 @@ fn main() -> Result<()> {
         ws.set_build_scripts(build_scripts);
     }
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
-    //let host = AnalysisHost::with_database(db);
-    //let krate = find_root_crate(host.raw_database(), &vfs, &target)?;
-    //let builder = builder::Builder::new(host.raw_database(), krate);
     let krate = find_root_crate(&db, &vfs, &target)?;
-    let builder = builder::Builder::new(&db, krate);
+    let mut builder = builder::Builder::new(&db, krate);
     builder.build();
+    println!("{}", builder.emit_methods());
     Ok(())
 }
