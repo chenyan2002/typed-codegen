@@ -27,31 +27,40 @@ impl<'a> Builder<'a> {
         match def {
             hir::ModuleDef::Module(module) => self.process_module(module),
             hir::ModuleDef::Function(func) => self.process_function(func),
-            hir::ModuleDef::Adt(adt) => self.process_adt(adt),
+            hir::ModuleDef::Adt(_) => (),
             _ => (),
         }
     }
     fn process_function(&self, func: hir::Function) {
+        use ra_ap_hir::HasAttrs;
         trace!("Processing function: {}", func.display(self.db));
-        debug!("Function: {}", func.ty(self.db).display(self.db));
-    }
-    fn process_adt(&self, adt: hir::Adt) {
-        trace!("Processing adt: {adt:?}");
-        match adt {
-            hir::Adt::Struct(s) => debug!("Struct: {}", s.display(self.db)),
-            hir::Adt::Enum(e) => debug!("Enum: {}", e.display(self.db)),
-            hir::Adt::Union(_) => (),
+        let attrs = func.attrs(self.db);
+        let is_cdk = attrs.iter().find(|attr| {
+            let attr = attr.path().segments().last().map(|s| s.to_smol_str());
+            attr == Some("update".into())
+                || attr == Some("query".into())
+                || attr == Some("init".into())
+        });
+        if let Some(t) = is_cdk {
+            debug!("Path: {:?}", t.path().segments());
+            debug!("Func: {}", func.name(self.db).as_str().unwrap());
+        } else {
+            log::warn!("Function is not a cdk function: {}", func.display(self.db));
+            return;
         }
-        for impl_ in hir::Impl::all_for_type(self.db, adt.ty(self.db)) {
-            self.process_impl(impl_);
-        }
-    }
-    fn process_impl(&self, impl_: hir::Impl) {
-        for item in impl_.items(self.db) {
-            match item {
-                hir::AssocItem::Function(f) => self.process_function(f),
-                _ => (),
-            }
-        }
+        let args = func.params_without_self(self.db);
+        let args = args.iter().map(|p| p.ty()).collect::<Vec<_>>();
+        let args = args
+            .into_iter()
+            .map(|t| t.display(self.db).to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        debug!("Args: {}", args);
+        let ret = if func.is_async(self.db) {
+            func.async_ret_type(self.db).unwrap()
+        } else {
+            func.ret_type(self.db)
+        };
+        debug!("Ret: {}", ret.display(self.db));
     }
 }

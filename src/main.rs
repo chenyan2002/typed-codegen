@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 mod builder;
 
 fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<ProjectWorkspace> {
-    let path_buf = std::env::current_dir()?.join(path);
+    let path_buf = std::env::current_dir()?.join(path).canonicalize()?;
+    debug!("Loading project workspace: {:?}", path_buf);
     let utf8_path = Utf8PathBuf::from_path_buf(path_buf).unwrap();
     let root = AbsPathBuf::assert(utf8_path);
     let root = ProjectManifest::discover_single(root.as_path())?;
@@ -24,13 +25,12 @@ fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<Pro
 fn cargo_config() -> CargoConfig {
     CargoConfig {
         sysroot: Some(ra_ap_project_model::RustLibSource::Discover),
-        wrap_rustc_in_build_scripts: true,
         ..Default::default()
     }
 }
 fn load_config() -> LoadCargoConfig {
     LoadCargoConfig {
-        load_out_dirs_from_check: true,
+        load_out_dirs_from_check: false,
         prefill_caches: false,
         with_proc_macro_server: ProcMacroServerChoice::Sysroot,
     }
@@ -83,7 +83,7 @@ fn find_root_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Result<
 
 fn main() -> Result<()> {
     env_logger::init();
-    let path = PathBuf::from(".");
+    let path = PathBuf::from("/Users/yan.chen/src/examples/rust/basic_dao");
     let cargo_config = cargo_config();
     let load_config = load_config();
     let mut ws = load_project_workspace(&path, &cargo_config)?;
@@ -95,9 +95,11 @@ fn main() -> Result<()> {
         ws.set_build_scripts(build_scripts);
     }
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
-    let host = AnalysisHost::with_database(db);
-    let krate = find_root_crate(host.raw_database(), &vfs, &target)?;
-    let builder = builder::Builder::new(host.raw_database(), krate);
+    //let host = AnalysisHost::with_database(db);
+    //let krate = find_root_crate(host.raw_database(), &vfs, &target)?;
+    //let builder = builder::Builder::new(host.raw_database(), krate);
+    let krate = find_root_crate(&db, &vfs, &target)?;
+    let builder = builder::Builder::new(&db, krate);
     builder.build();
     Ok(())
 }
