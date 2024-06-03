@@ -1,16 +1,60 @@
 use anyhow::Result;
+use clap::Parser;
 use std::path::PathBuf;
 
 mod builder;
 mod load_cargo;
 
+#[derive(Parser)]
+pub struct Options {
+    #[arg(short, long, default_value = ".")]
+    /// The path for Cargo project root.
+    pub manifest_path: PathBuf,
+    #[arg(short, long)]
+    /// Package to process
+    pub package: Option<String>,
+    #[arg(long)]
+    /// Do not activate the `default` feature.
+    pub no_default_features: bool,
+    #[arg(long)]
+    /// Activate all features.
+    pub all_features: bool,
+    #[arg(long, conflicts_with("all_features"))]
+    /// List of features to activate
+    pub features: Vec<String>,
+    #[arg(hide = true, long)]
+    pub expand_proc_macros: bool,
+}
+
+#[derive(Parser)]
+enum Command {
+    /// Check if dependent crates has any unsafe functions or exposes any canister endpoints.
+    Audit {
+        #[command(flatten)]
+        options: Options,
+    },
+    /// Export Candid interface from Rust project
+    Candid {
+        #[command(flatten)]
+        options: Options,
+    },
+}
+
 fn main() -> Result<()> {
     env_logger::init();
-    let path = PathBuf::from("/Users/yan.chen/src/examples/rust/basic_dao");
-    let (db, vfs, target) = load_cargo::load_cargo_project(&path)?;
-    let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
-    let mut builder = builder::Builder::new(&db, krate);
-    builder.build();
-    println!("{}", builder.emit_methods());
+    match Command::parse() {
+        Command::Audit { mut options } => {
+            options.expand_proc_macros = true;
+            let (_db, _vfs, _target) = load_cargo::load_cargo_project(&options)?;
+        }
+        Command::Candid { mut options } => {
+            options.expand_proc_macros = false;
+            let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
+            let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
+            let mut builder = builder::Builder::new(&db, krate);
+            builder.build();
+            println!("{}", builder.emit_methods());
+        }
+    }
     Ok(())
 }

@@ -1,3 +1,4 @@
+use crate::Options;
 use anyhow::Result;
 use log::{debug, trace};
 use ra_ap_hir::Crate;
@@ -5,16 +6,17 @@ use ra_ap_ide::RootDatabase;
 use ra_ap_load_cargo::{load_workspace, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_paths::{AbsPathBuf, Utf8PathBuf};
 use ra_ap_project_model::{
-    CargoConfig, PackageData, ProjectManifest, ProjectWorkspace, TargetData,
+    CargoConfig, CargoFeatures, PackageData, ProjectManifest, ProjectWorkspace, TargetData,
 };
 use ra_ap_vfs::Vfs;
 use std::path::Path;
 
-pub fn load_cargo_project(path: &Path) -> Result<(RootDatabase, Vfs, TargetData)> {
-    let cargo_config = cargo_config();
-    let load_config = load_config();
+pub fn load_cargo_project(options: &Options) -> Result<(RootDatabase, Vfs, TargetData)> {
+    let path = options.manifest_path.as_path();
+    let cargo_config = cargo_config(options);
+    let load_config = load_config(options);
     let mut ws = load_project_workspace(path, &cargo_config)?;
-    let (_, target) = select_package_and_target(&ws)?;
+    let (_, target) = select_package_and_target(&ws, options)?;
     if load_config.load_out_dirs_from_check {
         let build_scripts = ws.run_build_scripts(&cargo_config, &|msg| {
             trace!("{}", msg);
@@ -35,21 +37,33 @@ fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<Pro
         trace!("{}", msg);
     })
 }
-fn cargo_config() -> CargoConfig {
-    CargoConfig {
+fn cargo_config(options: &Options) -> CargoConfig {
+    let mut config = CargoConfig {
         sysroot: Some(ra_ap_project_model::RustLibSource::Discover),
         target: Some("wasm32-unknown-unknown".to_string()),
         ..Default::default()
-    }
+    };
+    config.features = if options.all_features {
+        CargoFeatures::All
+    } else {
+        CargoFeatures::Selected {
+            features: options.features.clone(),
+            no_default_features: options.no_default_features,
+        }
+    };
+    config
 }
-fn load_config() -> LoadCargoConfig {
+fn load_config(options: &Options) -> LoadCargoConfig {
     LoadCargoConfig {
-        load_out_dirs_from_check: false,
+        load_out_dirs_from_check: options.expand_proc_macros,
         prefill_caches: false,
         with_proc_macro_server: ProcMacroServerChoice::Sysroot,
     }
 }
-fn select_package_and_target(ws: &ProjectWorkspace) -> Result<(PackageData, TargetData)> {
+fn select_package_and_target(
+    ws: &ProjectWorkspace,
+    options: &Options,
+) -> Result<(PackageData, TargetData)> {
     use ra_ap_project_model::{ProjectWorkspaceKind, TargetKind};
     let cargo = match ws.kind {
         ProjectWorkspaceKind::Cargo { ref cargo, .. } => cargo,
@@ -59,26 +73,29 @@ fn select_package_and_target(ws: &ProjectWorkspace) -> Result<(PackageData, Targ
         .packages()
         .filter(|idx| cargo[*idx].is_member)
         .collect();
-    if packages.len() != 1 {
-        return Err(anyhow::anyhow!(
-            "expected exactly one package, got {}",
-            packages.len()
-        ));
-    }
-    let package_idx = packages[0];
+    let package_idx = if let Some(package) = &options.package {
+        let package_idx = packages
+            .into_iter()
+            .find(|idx| cargo[*idx].name == *package);
+        package_idx.ok_or_else(|| anyhow::anyhow!("package not found"))?
+    } else {
+        if packages.len() != 1 {
+            return Err(anyhow::anyhow!(
+                "multiple packages present in workspace, please select one via --package flag"
+            ));
+        }
+        packages[0]
+    };
     let package = cargo[package_idx].clone();
     debug!("Package: {:?}", package.name);
     let targets: Vec<_> = package
         .targets
         .iter()
         .cloned()
-        .filter(|idx| matches!(&cargo[*idx].kind, TargetKind::Bin | TargetKind::Lib { .. }))
+        .filter(|idx| matches!(&cargo[*idx].kind, TargetKind::Lib { .. }))
         .collect();
     if targets.len() != 1 {
-        return Err(anyhow::anyhow!(
-            "expected exactly one target, got {}",
-            targets.len()
-        ));
+        return Err(anyhow::anyhow!("No library target found."));
     }
     let target = cargo[targets[0]].clone();
     debug!("Target: {:?}, {:?}", target.name, target.kind);
