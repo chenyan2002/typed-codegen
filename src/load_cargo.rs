@@ -39,9 +39,13 @@ fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<Pro
 }
 fn cargo_config(options: &Options) -> CargoConfig {
     let mut config = CargoConfig {
-        sysroot: Some(ra_ap_project_model::RustLibSource::Discover),
         target: Some("wasm32-unknown-unknown".to_string()),
         ..Default::default()
+    };
+    config.sysroot = if options.load_std {
+        Some(ra_ap_project_model::RustLibSource::Discover)
+    } else {
+        None
     };
     config.features = if options.all_features {
         CargoFeatures::All
@@ -110,4 +114,16 @@ pub fn find_root_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Res
         crate_root_path == root_path
     });
     krate.ok_or_else(|| anyhow::anyhow!("root crate not found"))
+}
+pub fn find_non_root_crates(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Vec<Crate> {
+    let crates = Crate::all(db);
+    let root_path = target.root.as_path();
+    crates
+        .into_iter()
+        .filter(|krate| {
+            let vfs_path = vfs.file_path(krate.root_file(db));
+            let crate_root_path = vfs_path.as_path().unwrap();
+            crate_root_path != root_path
+        })
+        .collect()
 }
