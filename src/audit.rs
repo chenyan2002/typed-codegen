@@ -2,24 +2,28 @@ use crate::utils::{crate_name, display_path};
 use log::{debug, trace, warn};
 use ra_ap_hir::{self as hir, Crate, HirDisplay};
 use ra_ap_ide::RootDatabase;
+use std::collections::BTreeSet;
 
 pub struct Builder<'a> {
     db: &'a RootDatabase,
     krate: Crate,
-    pub methods: Vec<hir::Function>,
+    pub unsafe_funcs: BTreeSet<String>,
 }
 impl<'a> Builder<'a> {
     pub fn new(db: &'a RootDatabase, krate: Crate) -> Self {
         Self {
             db,
             krate,
-            methods: Vec::new(),
+            unsafe_funcs: BTreeSet::new(),
         }
     }
     pub fn build(&mut self) {
         debug!("Auditing crate {}...", crate_name(self.krate, self.db));
         let module = self.krate.root_module();
-        self.process_module(module)
+        self.process_module(module);
+        for f in &self.unsafe_funcs {
+            warn!("{f} has unsafe blocks")
+        }
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -62,10 +66,7 @@ impl<'a> Builder<'a> {
             }
         });
         if is_unsafe {
-            warn!(
-                "{} contains unsafe block",
-                display_path(func.into(), self.db)
-            );
+            self.unsafe_funcs.insert(display_path(func.into(), self.db));
         }
         let attrs = func.attrs(self.db);
         if let Some(export) = attrs.export_name() {
