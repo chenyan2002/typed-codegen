@@ -5,6 +5,7 @@ use std::path::PathBuf;
 mod audit;
 mod candid;
 mod load_cargo;
+mod utils;
 
 #[derive(Parser)]
 pub struct Options {

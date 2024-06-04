@@ -1,3 +1,4 @@
+use crate::utils::{crate_name, display_path};
 use log::{debug, trace, warn};
 use ra_ap_hir::{self as hir, Crate, HirDisplay};
 use ra_ap_ide::RootDatabase;
@@ -5,7 +6,6 @@ use ra_ap_ide::RootDatabase;
 pub struct Builder<'a> {
     db: &'a RootDatabase,
     krate: Crate,
-    name: String,
     pub methods: Vec<hir::Function>,
 }
 impl<'a> Builder<'a> {
@@ -13,15 +13,11 @@ impl<'a> Builder<'a> {
         Self {
             db,
             krate,
-            name: krate
-                .display_name(db)
-                .map(|c| c.canonical_name().to_string())
-                .unwrap_or("<unknown>".to_string()),
             methods: Vec::new(),
         }
     }
     pub fn build(&mut self) {
-        debug!("Auditing crate {}...", self.name);
+        debug!("Auditing crate {}...", crate_name(self.krate, self.db));
         let module = self.krate.root_module();
         self.process_module(module)
     }
@@ -55,19 +51,25 @@ impl<'a> Builder<'a> {
         use ra_ap_hir::{DefWithBody, HasAttrs};
         use ra_ap_hir_def::{hir::Expr, DefWithBodyId};
         trace!("Processing function: {}", func.display(self.db));
-        let func_name = func.name(self.db).to_smol_str();
         let body_id: DefWithBodyId = DefWithBody::from(func).into();
         let body = self.db.body(body_id);
         let entry = &body.exprs[body.body_expr];
+        let mut is_unsafe = false;
         entry.walk_child_exprs(|id| {
             let expr = &body.exprs[id];
             if let Expr::Unsafe { .. } = expr {
-                warn!("{}::{} contains unsafe block", self.name, func_name);
+                is_unsafe = true;
             }
         });
+        if is_unsafe {
+            warn!(
+                "{} contains unsafe block",
+                display_path(func.into(), self.db)
+            );
+        }
         let attrs = func.attrs(self.db);
         if let Some(export) = attrs.export_name() {
-            warn!("{}::{} exports {}", self.name, func_name, export);
+            warn!("{} exports {}", display_path(func.into(), self.db), export);
         }
     }
 }
