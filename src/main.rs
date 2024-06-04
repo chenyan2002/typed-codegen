@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use env_logger::Env;
 use std::path::PathBuf;
 
 mod audit;
@@ -45,7 +46,10 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    let env = Env::default().default_filter_or("debug");
+    env_logger::Builder::from_env(env)
+        .format_target(false)
+        .init();
     match Command::parse() {
         Command::Audit { mut options } => {
             options.expand_proc_macros = true;

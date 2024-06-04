@@ -1,5 +1,5 @@
 use crate::utils::{crate_name, display_path};
-use log::{debug, trace, warn};
+use log::{info, trace, warn};
 use ra_ap_hir::{self as hir, Crate, HirDisplay};
 use ra_ap_ide::RootDatabase;
 use std::collections::BTreeSet;
@@ -18,7 +18,7 @@ impl<'a> Builder<'a> {
         }
     }
     pub fn build(&mut self) {
-        debug!("Auditing crate {}...", crate_name(self.krate, self.db));
+        info!("Auditing crate {}...", crate_name(self.krate, self.db));
         let module = self.krate.root_module();
         self.process_module(module);
         for f in &self.unsafe_funcs {
