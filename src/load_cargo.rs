@@ -16,13 +16,13 @@ pub fn load_cargo_project(options: &Options) -> Result<(RootDatabase, Vfs, Targe
     let cargo_config = cargo_config(options);
     let load_config = load_config(options);
     let mut ws = load_project_workspace(path, &cargo_config)?;
-    let (_, target) = select_package_and_target(&ws, options)?;
     if load_config.load_out_dirs_from_check {
         let build_scripts = ws.run_build_scripts(&cargo_config, &|msg| {
             trace!("{}", msg);
         })?;
         ws.set_build_scripts(build_scripts);
     }
+    let (_, target) = select_package_and_target(&ws, options)?;
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
     Ok((db, vfs, target))
 }
@@ -40,12 +40,9 @@ fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<Pro
 fn cargo_config(options: &Options) -> CargoConfig {
     let mut config = CargoConfig {
         target: Some("wasm32-unknown-unknown".to_string()),
+        // sysroot needs to present for proc macro expansion to work
+        sysroot: Some(ra_ap_project_model::RustLibSource::Discover),
         ..Default::default()
-    };
-    config.sysroot = if options.load_std {
-        Some(ra_ap_project_model::RustLibSource::Discover)
-    } else {
-        None
     };
     config.features = if options.all_features {
         CargoFeatures::All
@@ -116,6 +113,7 @@ pub fn find_root_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Res
     krate.ok_or_else(|| anyhow::anyhow!("root crate not found"))
 }
 pub fn find_non_root_crates(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Vec<Crate> {
+    use ra_ap_base_db::CrateOrigin;
     let crates = Crate::all(db);
     let root_path = target.root.as_path();
     crates
@@ -123,7 +121,7 @@ pub fn find_non_root_crates(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -
         .filter(|krate| {
             let vfs_path = vfs.file_path(krate.root_file(db));
             let crate_root_path = vfs_path.as_path().unwrap();
-            crate_root_path != root_path
+            crate_root_path != root_path && matches!(krate.origin(db), CrateOrigin::Library { .. })
         })
         .collect()
 }

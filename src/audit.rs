@@ -18,9 +18,18 @@ impl<'a> Builder<'a> {
         }
     }
     pub fn build(&mut self) {
-        info!("Auditing crate {}...", crate_name(self.krate, self.db));
+        let name = crate_name(self.krate, self.db);
+        let name = if let Some(ver) = self.krate.version(self.db) {
+            format!("{name} {ver}")
+        } else {
+            name
+        };
+        info!("Auditing crate {}...", name);
         let module = self.krate.root_module();
         self.process_module(module);
+        for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
+            self.process_impl(impl_);
+        }
         for f in &self.unsafe_funcs {
             warn!("{f} has unsafe blocks")
         }
@@ -30,9 +39,6 @@ impl<'a> Builder<'a> {
         let decls = module.declarations(self.db);
         for d in decls {
             self.process_def(d);
-        }
-        for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
-            self.process_impl(impl_);
         }
     }
     fn process_def(&mut self, def: hir::ModuleDef) {

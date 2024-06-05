@@ -27,8 +27,6 @@ pub struct Options {
     pub features: Vec<String>,
     #[arg(hide = true, long)]
     pub expand_proc_macros: bool,
-    #[arg(hide = true, long)]
-    pub load_std: bool,
 }
 
 #[derive(Parser)]
@@ -53,7 +51,6 @@ fn main() -> Result<()> {
     match Command::parse() {
         Command::Audit { mut options } => {
             options.expand_proc_macros = true;
-            options.load_std = false;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
             let crates = load_cargo::find_non_root_crates(&db, &vfs, &target);
             for krate in crates {
@@ -63,7 +60,6 @@ fn main() -> Result<()> {
         }
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
-            options.load_std = true;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
             let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
             let mut builder = candid::Builder::new(&db, krate);

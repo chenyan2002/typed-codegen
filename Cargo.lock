@@ -1744,6 +1744,7 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "ra_ap_base_db",
  "ra_ap_hir",
  "ra_ap_hir_def",
  "ra_ap_ide",
