@@ -17,3 +17,4 @@ ra_ap_project_model = "0.0.217"
 ra_ap_vfs = "0.0.217"
 ra_ap_base_db = "0.0.217"
 clap = { version = "4.5.4", features = ["derive"] }
+fxhash = "0.2.1"

@@ -52,11 +52,9 @@ fn main() -> Result<()> {
         Command::Audit { mut options } => {
             options.expand_proc_macros = true;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
-            let crates = load_cargo::find_non_root_crates(&db, &vfs, &target);
-            for krate in crates {
-                let mut builder = audit::Builder::new(&db, krate);
-                builder.build();
-            }
+            let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
+            let mut builder = audit::Builder::new(&db, krate);
+            builder.build();
         }
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;

@@ -1,20 +1,23 @@
 use crate::utils::{crate_name, display_path};
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use ra_ap_hir::{self as hir, Crate, HirDisplay};
 use ra_ap_ide::RootDatabase;
-use std::collections::BTreeSet;
+use fxhash::FxHashSet;
+use ra_ap_hir_def::FunctionId;
 
 pub struct Builder<'a> {
     db: &'a RootDatabase,
     krate: Crate,
-    pub unsafe_funcs: BTreeSet<String>,
+    pub visited: FxHashSet<FunctionId>,
+    pub worklist: Vec<FunctionId>,
 }
 impl<'a> Builder<'a> {
     pub fn new(db: &'a RootDatabase, krate: Crate) -> Self {
         Self {
             db,
             krate,
-            unsafe_funcs: BTreeSet::new(),
+            worklist: Vec::new(),
+            visited: FxHashSet::default(),
         }
     }
     pub fn build(&mut self) {
@@ -30,9 +33,9 @@ impl<'a> Builder<'a> {
         for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
             self.process_impl(impl_);
         }
-        for f in &self.unsafe_funcs {
+        /*for f in &self.unsafe_funcs {
             warn!("{f} has unsafe blocks")
-        }
+    }*/
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -60,23 +63,40 @@ impl<'a> Builder<'a> {
         use ra_ap_hir::db::DefDatabase;
         use ra_ap_hir::{DefWithBody, HasAttrs};
         use ra_ap_hir_def::{hir::Expr, DefWithBodyId};
-        trace!("Processing function: {}", func.display(self.db));
+        use ra_ap_hir_def::resolver::{HasResolver, ValueNs};
+        if !self.visited.insert(func.into()) {
+            return;
+        }
+        let name = display_path(func.into(), self.db);
+        trace!("Processing function: {name}");
+        self.visited.insert(func.into());
         let body_id: DefWithBodyId = DefWithBody::from(func).into();
         let body = self.db.body(body_id);
-        let entry = &body.exprs[body.body_expr];
-        let mut is_unsafe = false;
-        entry.walk_child_exprs(|id| {
-            let expr = &body.exprs[id];
-            if let Expr::Unsafe { .. } = expr {
-                is_unsafe = true;
+        let resolver = body_id.resolver(self.db);
+        for (_, expr) in body.exprs.iter() {
+            match expr {
+                Expr::Unsafe { .. } => {
+                    warn!("{name} UNSAFE");
+                }
+                //Expr::Missing => debug!("{name} MISSING!"),
+                Expr::MethodCall { receiver, method_name, .. } => {
+                    let receiver = &body.exprs[*receiver];
+                    let Expr::Path(ref path) = receiver else { log::error!("{name}: {:?} ==> {:?}", expr, receiver); continue; };
+                    let val = resolver.resolve_path_in_value_ns(self.db, &path);
+                    debug!("{name}: {:?} ==> {:?} --> {:?}", expr, path, val);
+                }
+                Expr::Path(path) => {
+                    let val = resolver.resolve_path_in_value_ns_fully(self.db, &path);
+                    if let Some(ValueNs::FunctionId(f)) = val {
+                        self.process_function(f.into());
+                    }
+                }
+                _ => (),
             }
-        });
-        if is_unsafe {
-            self.unsafe_funcs.insert(display_path(func.into(), self.db));
         }
         let attrs = func.attrs(self.db);
         if let Some(export) = attrs.export_name() {
-            warn!("{} exports {}", display_path(func.into(), self.db), export);
+            warn!("{} exports {}", name, export);
         }
     }
 }
