@@ -1,22 +1,23 @@
 use crate::utils::{crate_name, display_path};
-use log::{debug, info, trace, warn};
-use ra_ap_hir::{self as hir, Crate, HirDisplay};
-use ra_ap_ide::RootDatabase;
 use fxhash::FxHashSet;
+use log::{debug, error, info, trace, warn};
+use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
+use ra_ap_ide::RootDatabase;
+use ra_ap_syntax::SyntaxNode;
 
 pub struct Builder<'a> {
     db: &'a RootDatabase,
     krate: Crate,
+    semantics: Semantics<'a, RootDatabase>,
     pub visited: FxHashSet<FunctionId>,
-    pub worklist: Vec<FunctionId>,
 }
 impl<'a> Builder<'a> {
     pub fn new(db: &'a RootDatabase, krate: Crate) -> Self {
         Self {
             db,
             krate,
-            worklist: Vec::new(),
+            semantics: Semantics::new(db),
             visited: FxHashSet::default(),
         }
     }
@@ -34,8 +35,8 @@ impl<'a> Builder<'a> {
             self.process_impl(impl_);
         }
         /*for f in &self.unsafe_funcs {
-            warn!("{f} has unsafe blocks")
-    }*/
+                warn!("{f} has unsafe blocks")
+        }*/
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -60,43 +61,63 @@ impl<'a> Builder<'a> {
         });
     }
     fn process_function(&mut self, func: hir::Function) {
-        use ra_ap_hir::db::DefDatabase;
-        use ra_ap_hir::{DefWithBody, HasAttrs};
-        use ra_ap_hir_def::{hir::Expr, DefWithBodyId};
-        use ra_ap_hir_def::resolver::{HasResolver, ValueNs};
+        use ra_ap_base_db::CrateOrigin;
+        use ra_ap_syntax::ast::AstNode;
         if !self.visited.insert(func.into()) {
             return;
         }
-        let name = display_path(func.into(), self.db);
-        trace!("Processing function: {name}");
-        self.visited.insert(func.into());
-        let body_id: DefWithBodyId = DefWithBody::from(func).into();
-        let body = self.db.body(body_id);
-        let resolver = body_id.resolver(self.db);
-        for (_, expr) in body.exprs.iter() {
-            match expr {
-                Expr::Unsafe { .. } => {
-                    warn!("{name} UNSAFE");
-                }
-                //Expr::Missing => debug!("{name} MISSING!"),
-                Expr::MethodCall { receiver, method_name, .. } => {
-                    let receiver = &body.exprs[*receiver];
-                    let Expr::Path(ref path) = receiver else { log::error!("{name}: {:?} ==> {:?}", expr, receiver); continue; };
-                    let val = resolver.resolve_path_in_value_ns(self.db, &path);
-                    debug!("{name}: {:?} ==> {:?} --> {:?}", expr, path, val);
-                }
-                Expr::Path(path) => {
-                    let val = resolver.resolve_path_in_value_ns_fully(self.db, &path);
-                    if let Some(ValueNs::FunctionId(f)) = val {
-                        self.process_function(f.into());
-                    }
-                }
-                _ => (),
-            }
+        if matches!(
+            func.module(self.db).krate().origin(self.db),
+            CrateOrigin::Rustc { .. } | CrateOrigin::Lang(_)
+        ) {
+            return;
         }
+        let name = display_path(func.into(), self.db);
+        info!("Processing function: {name}");
+        let Some(ast) = self.semantics.source(func) else {
+            log::error!("cannot get source for {name}");
+            return;
+        };
+        self.process_syntax_node(&name, ast.value.syntax());
+        /*
         let attrs = func.attrs(self.db);
         if let Some(export) = attrs.export_name() {
             warn!("{} exports {}", name, export);
+        }*/
+    }
+    fn process_syntax_node(&mut self, name: &str, ast: &SyntaxNode) {
+        use ra_ap_hir::CallableKind;
+        use ra_ap_syntax::{ast, match_ast, AstNode};
+        for node in ast.descendants() {
+            match_ast! {
+                match node {
+                    ast::MacroCall(m) => {
+                        if let Some(m) = self.semantics.expand(&m) {
+                            self.process_syntax_node(name, &m);
+                        }
+                    },
+                    ast::BlockExpr(b) => {
+                        if b.unsafe_token().is_some() {
+                            error!("{name} UNSAFE");
+                        }
+                    },
+                    ast::MethodCallExpr(m) => {
+                        if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
+                            if let CallableKind::Function(f) = call.kind() {
+                                self.process_function(f);
+                            }
+                        }
+                    },
+                    ast::Expr(e) => {
+                        if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {
+                            if let CallableKind::Function(f) = call.kind() {
+                                self.process_function(f);
+                            }
+                        }
+                    },
+                    _ => (),
+                }
+            }
         }
     }
 }
