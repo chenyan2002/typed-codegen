@@ -86,33 +86,44 @@ impl<'a> Builder<'a> {
         }*/
     }
     fn process_syntax_node(&mut self, name: &str, ast: &SyntaxNode) {
-        use ra_ap_hir::CallableKind;
+        use ra_ap_hir::{AsAssocItem, CallableKind};
         use ra_ap_syntax::{ast, match_ast, AstNode};
         for node in ast.descendants() {
             match_ast! {
                 match node {
-                    ast::MacroCall(m) => {
-                        if let Some(m) = self.semantics.expand(&m) {
-                            self.process_syntax_node(name, &m);
+                    ast::MacroCall(m) => if let Some(m) = self.semantics.expand(&m) {
+                        self.process_syntax_node(name, &m);
+                    },
+                    ast::BlockExpr(b) => if b.unsafe_token().is_some() {
+                        error!("{name} UNSAFE");
+                    },
+                    ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
+                        if let CallableKind::Function(f) = call.kind() {
+                            self.process_function(f);
                         }
                     },
-                    ast::BlockExpr(b) => {
-                        if b.unsafe_token().is_some() {
-                            error!("{name} UNSAFE");
-                        }
+                    ast::AwaitExpr(e) => if let Some(f) = self.semantics.resolve_await_to_poll(&e) {
+                        self.process_function(f);
                     },
-                    ast::MethodCallExpr(m) => {
-                        if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
-                            if let CallableKind::Function(f) = call.kind() {
-                                self.process_function(f);
+                    ast::PrefixExpr(e) => if let Some(f) = self.semantics.resolve_prefix_expr(&e) {
+                        self.process_function(f);
+                    },
+                    ast::IndexExpr(e) => if let Some(f) = self.semantics.resolve_index_expr(&e) {
+                        self.process_function(f);
+                    },
+                    ast::BinExpr(e) => if let Some(f) = self.semantics.resolve_bin_expr(&e) {
+                        self.process_function(f);
+                    },
+                    ast::TryExpr(e) => if let Some(f) = self.semantics.resolve_try_expr(&e) {
+                        self.process_function(f);
+                    },
+                    ast::Expr(e) => if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {
+                        if let CallableKind::Function(f) = call.kind() {
+                            if let Some(assoc) = f.as_assoc_item(self.db) {
+                                let container = assoc.container(self.db);
+                                error!("{} => {:?}", f.display(self.db), container);
                             }
-                        }
-                    },
-                    ast::Expr(e) => {
-                        if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {
-                            if let CallableKind::Function(f) = call.kind() {
-                                self.process_function(f);
-                            }
+                            self.process_function(f);
                         }
                     },
                     _ => (),
