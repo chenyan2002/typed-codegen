@@ -1,6 +1,7 @@
 use crate::utils::{crate_name, display_path};
 use fxhash::FxHashSet;
 use log::{debug, error, info, trace, warn};
+use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
 use ra_ap_ide::RootDatabase;
@@ -16,19 +17,24 @@ pub struct Builder<'a> {
     krate: Crate,
     semantics: Semantics<'a, RootDatabase>,
     mode: Mode,
+    whitelist: Vec<CrateId>,
     pub visited: FxHashSet<FunctionId>,
 }
 impl<'a> Builder<'a> {
-    pub fn new(db: &'a RootDatabase, krate: Crate, mode: Mode) -> Self {
+    pub fn new(db: &'a RootDatabase, krate: Crate, whitelist: Vec<CrateId>, mode: Mode) -> Self {
         Self {
             db,
             krate,
             mode,
+            whitelist,
             semantics: Semantics::new(db),
             visited: FxHashSet::default(),
         }
     }
     pub fn build(&mut self) {
+        if self.whitelist.contains(&CrateId::from(self.krate)) {
+            return;
+        }
         let name = crate_name(self.krate, self.db);
         let name = if let Some(ver) = self.krate.version(self.db) {
             format!("{name} {ver}")
@@ -72,8 +78,12 @@ impl<'a> Builder<'a> {
         if !self.visited.insert(func.into()) {
             return;
         }
+        let krate = func.module(self.db).krate();
+        if self.whitelist.contains(&CrateId::from(krate)) {
+            return;
+        }
         if matches!(
-            func.module(self.db).krate().origin(self.db),
+            krate.origin(self.db),
             CrateOrigin::Rustc { .. } | CrateOrigin::Lang(_)
         ) {
             return;

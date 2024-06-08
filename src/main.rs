@@ -38,6 +38,9 @@ enum Command {
         #[arg(short, long)]
         /// Trace unsafe functions from the main package. If false, scan external dependencies for import/export functions.
         trace_functions: bool,
+        #[arg(short, long)]
+        /// List of whitelisted crates.
+        whitelist: Vec<String>,
     },
     /// Export Candid interface from Rust project
     Candid {
@@ -47,6 +50,9 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    use load_cargo::{
+        find_crate, find_non_root_crates, find_whitelisted_crates, load_cargo_project,
+    };
     let env = Env::default().default_filter_or("info");
     env_logger::Builder::from_env(env)
         .format_target(false)
@@ -55,26 +61,29 @@ fn main() -> Result<()> {
         Command::Audit {
             mut options,
             trace_functions,
+            whitelist,
         } => {
             use audit::Mode;
             options.expand_proc_macros = true;
-            let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
+            let (ws, db, vfs, target) = load_cargo_project(&options)?;
+            let whitelist = find_whitelisted_crates(&ws, &db, &vfs, &whitelist)?;
             if trace_functions {
-                let krate = load_cargo::find_crate(&db, &vfs, &target)?;
-                let mut builder = audit::Builder::new(&db, krate, Mode::TraceFunctions);
+                let krate = find_crate(&db, &vfs, &target)?;
+                let mut builder = audit::Builder::new(&db, krate, whitelist, Mode::TraceFunctions);
                 builder.build();
             } else {
-                let crates = load_cargo::find_non_root_crates(&db, &vfs, &target);
+                let crates = find_non_root_crates(&db, &vfs, &target);
                 for krate in crates {
-                    let mut builder = audit::Builder::new(&db, krate, Mode::ScanExports);
+                    let mut builder =
+                        audit::Builder::new(&db, krate, whitelist.clone(), Mode::ScanExports);
                     builder.build();
                 }
             }
         }
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
-            let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
-            let krate = load_cargo::find_crate(&db, &vfs, &target)?;
+            let (_, db, vfs, target) = load_cargo_project(&options)?;
+            let krate = find_crate(&db, &vfs, &target)?;
             let mut builder = candid::Builder::new(&db, krate);
             builder.build();
             println!("{}", builder.emit_methods());

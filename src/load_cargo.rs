@@ -1,17 +1,21 @@
 use crate::Options;
 use anyhow::Result;
 use log::{debug, trace};
+use ra_ap_base_db::CrateId;
 use ra_ap_hir::Crate;
 use ra_ap_ide::RootDatabase;
 use ra_ap_load_cargo::{load_workspace, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_paths::{AbsPathBuf, Utf8PathBuf};
 use ra_ap_project_model::{
-    CargoConfig, CargoFeatures, ProjectManifest, ProjectWorkspace, TargetData,
+    CargoConfig, CargoFeatures, CargoWorkspace, ProjectManifest, ProjectWorkspace,
+    ProjectWorkspaceKind, TargetData, TargetKind,
 };
 use ra_ap_vfs::Vfs;
 use std::path::Path;
 
-pub fn load_cargo_project(options: &Options) -> Result<(RootDatabase, Vfs, TargetData)> {
+pub fn load_cargo_project(
+    options: &Options,
+) -> Result<(CargoWorkspace, RootDatabase, Vfs, TargetData)> {
     let path = options.manifest_path.as_path();
     let cargo_config = cargo_config(options);
     let load_config = load_config(options);
@@ -22,9 +26,13 @@ pub fn load_cargo_project(options: &Options) -> Result<(RootDatabase, Vfs, Targe
         })?;
         ws.set_build_scripts(build_scripts);
     }
-    let target = find_package(&ws, &options.package, &None)?;
+    let cargo = match &ws.kind {
+        ProjectWorkspaceKind::Cargo { cargo, .. } => cargo.clone(),
+        _ => return Err(anyhow::anyhow!("Not a cargo workspace")),
+    };
+    let target = find_package(&cargo, options.package.as_deref(), None)?;
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
-    Ok((db, vfs, target))
+    Ok((cargo, db, vfs, target))
 }
 
 fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<ProjectWorkspace> {
@@ -62,15 +70,10 @@ fn load_config(options: &Options) -> LoadCargoConfig {
     }
 }
 fn find_package(
-    ws: &ProjectWorkspace,
-    name: &Option<String>,
-    version: &Option<String>,
+    cargo: &CargoWorkspace,
+    name: Option<&str>,
+    version: Option<&str>,
 ) -> Result<TargetData> {
-    use ra_ap_project_model::{ProjectWorkspaceKind, TargetKind};
-    let cargo = match ws.kind {
-        ProjectWorkspaceKind::Cargo { ref cargo, .. } => cargo,
-        _ => return Err(anyhow::anyhow!("Not a cargo workspace")),
-    };
     let packages: Vec<_> = cargo
         .packages()
         .filter(|idx| {
@@ -122,7 +125,23 @@ fn find_package(
     let target = cargo[targets[0]].clone();
     Ok(target)
 }
-
+pub fn find_whitelisted_crates(
+    ws: &CargoWorkspace,
+    db: &RootDatabase,
+    vfs: &Vfs,
+    whitelist: &[String],
+) -> Result<Vec<CrateId>> {
+    let mut res = Vec::new();
+    for item in whitelist {
+        let parsed: Vec<_> = item.split('@').collect();
+        let name = parsed[0];
+        let version = parsed.get(1);
+        let target = find_package(ws, Some(name), version.copied())?;
+        let krate = find_crate(db, vfs, &target)?;
+        res.push(krate.into());
+    }
+    Ok(res)
+}
 pub fn find_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Result<Crate> {
     let crates = Crate::all(db);
     let root_path = target.root.as_path();
@@ -131,7 +150,7 @@ pub fn find_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Result<C
         let crate_root_path = vfs_path.as_path().unwrap();
         crate_root_path == root_path
     });
-    krate.ok_or_else(|| anyhow::anyhow!("root crate not found"))
+    krate.ok_or_else(|| anyhow::anyhow!("crate not found"))
 }
 pub fn find_non_root_crates(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Vec<Crate> {
     use ra_ap_base_db::CrateOrigin;
