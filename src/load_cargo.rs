@@ -121,7 +121,11 @@ pub fn find_non_root_crates(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -
         .filter(|krate| {
             let vfs_path = vfs.file_path(krate.root_file(db));
             let crate_root_path = vfs_path.as_path().unwrap();
-            crate_root_path != root_path && matches!(krate.origin(db), CrateOrigin::Library { .. })
+            crate_root_path != root_path
+                && !matches!(
+                    krate.origin(db),
+                    CrateOrigin::Rustc { .. } | CrateOrigin::Lang(_)
+                )
         })
         .collect()
 }

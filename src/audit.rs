@@ -6,17 +6,24 @@ use ra_ap_hir_def::FunctionId;
 use ra_ap_ide::RootDatabase;
 use ra_ap_syntax::SyntaxNode;
 
+pub enum Mode {
+    TraceFunctions,
+    ScanExports,
+}
+
 pub struct Builder<'a> {
     db: &'a RootDatabase,
     krate: Crate,
     semantics: Semantics<'a, RootDatabase>,
+    mode: Mode,
     pub visited: FxHashSet<FunctionId>,
 }
 impl<'a> Builder<'a> {
-    pub fn new(db: &'a RootDatabase, krate: Crate) -> Self {
+    pub fn new(db: &'a RootDatabase, krate: Crate, mode: Mode) -> Self {
         Self {
             db,
             krate,
+            mode,
             semantics: Semantics::new(db),
             visited: FxHashSet::default(),
         }
@@ -34,10 +41,7 @@ impl<'a> Builder<'a> {
         for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
             self.process_impl(impl_);
         }
-        /*for f in &self.unsafe_funcs {
-                warn!("{f} has unsafe blocks")
-        }*/
-        info!("Found {} functions", self.visited.len());
+        debug!("Found {} functions", self.visited.len());
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -63,7 +67,7 @@ impl<'a> Builder<'a> {
     }
     fn process_function(&mut self, func: hir::Function) {
         use ra_ap_base_db::CrateOrigin;
-        use ra_ap_hir::{HasContainer, ItemContainer};
+        use ra_ap_hir::{HasAttrs, HasContainer, ItemContainer};
         use ra_ap_syntax::ast::AstNode;
         if !self.visited.insert(func.into()) {
             return;
@@ -75,20 +79,25 @@ impl<'a> Builder<'a> {
             return;
         }
         let name = display_path(func.into(), self.db);
-        info!("Processing function: {name}");
+        trace!("Processing function: {name}");
         if let ItemContainer::ExternBlock() = func.container(self.db) {
-            error!("{name} is EXTERNAL!");
+            error!("{name} is an external imports!");
         }
-        let Some(ast) = self.semantics.source(func) else {
-            error!("cannot get source for {name}");
-            return;
-        };
-        self.process_syntax_node(&name, ast.value.syntax());
-        /*
-        let attrs = func.attrs(self.db);
-        if let Some(export) = attrs.export_name() {
-            warn!("{} exports {}", name, export);
-        }*/
+        match self.mode {
+            Mode::TraceFunctions => {
+                let Some(ast) = self.semantics.source(func) else {
+                    warn!("cannot get source for {name}");
+                    return;
+                };
+                self.process_syntax_node(&name, ast.value.syntax());
+            }
+            Mode::ScanExports => {
+                let attrs = func.attrs(self.db);
+                if let Some(export) = attrs.export_name() {
+                    error!("{} exports {}", name, export);
+                }
+            }
+        }
     }
     fn process_syntax_node(&mut self, name: &str, ast: &SyntaxNode) {
         use ra_ap_hir::{AsAssocItem, CallableKind};
@@ -100,7 +109,7 @@ impl<'a> Builder<'a> {
                         self.process_syntax_node(name, &m);
                     },
                     ast::BlockExpr(b) => if b.unsafe_token().is_some() {
-                        error!("{name} UNSAFE");
+                        warn!("{name} contains unsafe block!");
                         for stmt in b.statements() {
                             self.process_syntax_node(name, stmt.syntax());
                         }
@@ -132,7 +141,7 @@ impl<'a> Builder<'a> {
                         if let CallableKind::Function(f) = call.kind() {
                             if let Some(assoc) = f.as_assoc_item(self.db) {
                                 let container = assoc.container(self.db);
-                                info!("{} => {:?}", f.display(self.db), container);
+                                debug!("{} => {:?}", f.display(self.db), container);
                             }
                             self.process_function(f);
                         }

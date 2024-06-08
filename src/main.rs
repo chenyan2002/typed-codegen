@@ -35,6 +35,9 @@ enum Command {
     Audit {
         #[command(flatten)]
         options: Options,
+        #[arg(short, long)]
+        /// Trace unsafe functions from the main package. If false, scan external dependencies for import/export functions.
+        trace_functions: bool,
     },
     /// Export Candid interface from Rust project
     Candid {
@@ -44,17 +47,29 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    let env = Env::default().default_filter_or("debug");
+    let env = Env::default().default_filter_or("info");
     env_logger::Builder::from_env(env)
         .format_target(false)
         .init();
     match Command::parse() {
-        Command::Audit { mut options } => {
+        Command::Audit {
+            mut options,
+            trace_functions,
+        } => {
+            use audit::Mode;
             options.expand_proc_macros = true;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
-            let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
-            let mut builder = audit::Builder::new(&db, krate);
-            builder.build();
+            if trace_functions {
+                let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
+                let mut builder = audit::Builder::new(&db, krate, Mode::TraceFunctions);
+                builder.build();
+            } else {
+                let crates = load_cargo::find_non_root_crates(&db, &vfs, &target);
+                for krate in crates {
+                    let mut builder = audit::Builder::new(&db, krate, Mode::ScanExports);
+                    builder.build();
+                }
+            }
         }
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
