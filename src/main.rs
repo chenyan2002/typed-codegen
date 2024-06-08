@@ -60,7 +60,7 @@ fn main() -> Result<()> {
             options.expand_proc_macros = true;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
             if trace_functions {
-                let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
+                let krate = load_cargo::find_crate(&db, &vfs, &target)?;
                 let mut builder = audit::Builder::new(&db, krate, Mode::TraceFunctions);
                 builder.build();
             } else {
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
             let (db, vfs, target) = load_cargo::load_cargo_project(&options)?;
-            let krate = load_cargo::find_root_crate(&db, &vfs, &target)?;
+            let krate = load_cargo::find_crate(&db, &vfs, &target)?;
             let mut builder = candid::Builder::new(&db, krate);
             builder.build();
             println!("{}", builder.emit_methods());

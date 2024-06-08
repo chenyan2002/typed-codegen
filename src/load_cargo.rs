@@ -6,7 +6,7 @@ use ra_ap_ide::RootDatabase;
 use ra_ap_load_cargo::{load_workspace, LoadCargoConfig, ProcMacroServerChoice};
 use ra_ap_paths::{AbsPathBuf, Utf8PathBuf};
 use ra_ap_project_model::{
-    CargoConfig, CargoFeatures, PackageData, ProjectManifest, ProjectWorkspace, TargetData,
+    CargoConfig, CargoFeatures, ProjectManifest, ProjectWorkspace, TargetData,
 };
 use ra_ap_vfs::Vfs;
 use std::path::Path;
@@ -22,7 +22,7 @@ pub fn load_cargo_project(options: &Options) -> Result<(RootDatabase, Vfs, Targe
         })?;
         ws.set_build_scripts(build_scripts);
     }
-    let (_, target) = select_package_and_target(&ws, options)?;
+    let target = find_package(&ws, &options.package, &None)?;
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
     Ok((db, vfs, target))
 }
@@ -61,34 +61,55 @@ fn load_config(options: &Options) -> LoadCargoConfig {
         with_proc_macro_server: ProcMacroServerChoice::Sysroot,
     }
 }
-fn select_package_and_target(
+fn find_package(
     ws: &ProjectWorkspace,
-    options: &Options,
-) -> Result<(PackageData, TargetData)> {
+    name: &Option<String>,
+    version: &Option<String>,
+) -> Result<TargetData> {
     use ra_ap_project_model::{ProjectWorkspaceKind, TargetKind};
     let cargo = match ws.kind {
         ProjectWorkspaceKind::Cargo { ref cargo, .. } => cargo,
-        _ => return Err(anyhow::anyhow!("not a cargo workspace")),
+        _ => return Err(anyhow::anyhow!("Not a cargo workspace")),
     };
     let packages: Vec<_> = cargo
         .packages()
-        .filter(|idx| cargo[*idx].is_member)
+        .filter(|idx| {
+            let package = &cargo[*idx];
+            if let Some(name) = name {
+                package.name == *name
+                    && (version.is_none()
+                        || package.version.to_string() == *version.as_ref().unwrap())
+            } else {
+                package.is_member
+            }
+        })
         .collect();
-    let package_idx = if let Some(package) = &options.package {
-        let package_idx = packages
-            .into_iter()
-            .find(|idx| cargo[*idx].name == *package);
-        package_idx.ok_or_else(|| anyhow::anyhow!("package not found"))?
-    } else {
-        if packages.len() != 1 {
+    if packages.len() != 1 {
+        if packages.is_empty() {
+            return Err(anyhow::anyhow!("Cannot find package"));
+        }
+        if name.is_some() {
+            let packages: Vec<_> = packages
+                .into_iter()
+                .map(|idx| format!("{}@{}", cargo[idx].name, cargo[idx].version))
+                .collect();
             return Err(anyhow::anyhow!(
-                "multiple packages present in workspace, please select one via --package flag"
+                "Multiple packages found:\n{}",
+                packages.join("\n")
+            ));
+        } else {
+            let packages: Vec<_> = packages
+                .into_iter()
+                .map(|idx| cargo[idx].name.to_string())
+                .collect();
+            return Err(anyhow::anyhow!(
+                "Multiple packages present in workspace, please select one via --package flag:\n{}",
+                packages.join("\n")
             ));
         }
-        packages[0]
-    };
+    }
+    let package_idx = packages[0];
     let package = cargo[package_idx].clone();
-    debug!("Package: {:?}", package.name);
     let targets: Vec<_> = package
         .targets
         .iter()
@@ -99,10 +120,10 @@ fn select_package_and_target(
         return Err(anyhow::anyhow!("No library target found."));
     }
     let target = cargo[targets[0]].clone();
-    debug!("Target: {:?}, {:?}", target.name, target.kind);
-    Ok((package, target))
+    Ok(target)
 }
-pub fn find_root_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Result<Crate> {
+
+pub fn find_crate(db: &RootDatabase, vfs: &Vfs, target: &TargetData) -> Result<Crate> {
     let crates = Crate::all(db);
     let root_path = target.root.as_path();
     let krate = crates.into_iter().find(|krate| {
