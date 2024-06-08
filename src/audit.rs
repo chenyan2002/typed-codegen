@@ -37,6 +37,7 @@ impl<'a> Builder<'a> {
         /*for f in &self.unsafe_funcs {
                 warn!("{f} has unsafe blocks")
         }*/
+        info!("Found {} functions", self.visited.len());
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -62,6 +63,7 @@ impl<'a> Builder<'a> {
     }
     fn process_function(&mut self, func: hir::Function) {
         use ra_ap_base_db::CrateOrigin;
+        use ra_ap_hir::{HasContainer, ItemContainer};
         use ra_ap_syntax::ast::AstNode;
         if !self.visited.insert(func.into()) {
             return;
@@ -74,8 +76,11 @@ impl<'a> Builder<'a> {
         }
         let name = display_path(func.into(), self.db);
         info!("Processing function: {name}");
+        if let ItemContainer::ExternBlock() = func.container(self.db) {
+            error!("{name} is EXTERNAL!");
+        }
         let Some(ast) = self.semantics.source(func) else {
-            log::error!("cannot get source for {name}");
+            error!("cannot get source for {name}");
             return;
         };
         self.process_syntax_node(&name, ast.value.syntax());
@@ -96,6 +101,12 @@ impl<'a> Builder<'a> {
                     },
                     ast::BlockExpr(b) => if b.unsafe_token().is_some() {
                         error!("{name} UNSAFE");
+                        for stmt in b.statements() {
+                            self.process_syntax_node(name, stmt.syntax());
+                        }
+                        if let Some(e) = b.tail_expr() {
+                            self.process_syntax_node(name, e.syntax());
+                        }
                     },
                     ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
                         if let CallableKind::Function(f) = call.kind() {
@@ -121,7 +132,7 @@ impl<'a> Builder<'a> {
                         if let CallableKind::Function(f) = call.kind() {
                             if let Some(assoc) = f.as_assoc_item(self.db) {
                                 let container = assoc.container(self.db);
-                                error!("{} => {:?}", f.display(self.db), container);
+                                info!("{} => {:?}", f.display(self.db), container);
                             }
                             self.process_function(f);
                         }

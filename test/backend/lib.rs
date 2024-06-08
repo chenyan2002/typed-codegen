@@ -20,3 +20,8 @@ fn f() -> u8 {
 fn g() {
   let _ = T + T;
 }
+#[ic_cdk::update]
+fn h() -> u64 {
+  expand!(my_library::non_ic_func());
+  expand!(my_library::stable64_size())
+}

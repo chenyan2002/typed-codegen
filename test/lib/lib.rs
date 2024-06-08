@@ -29,3 +29,12 @@ macro_rules! expand {
         unsafe { $e }
     }};
 }
+
+#[link(wasm_import_module = "ic0")]
+extern "C" {
+    pub fn stable64_size() -> u64;
+}
+#[link(wasm_import_module = "whatever")]
+extern "C" {
+    pub fn non_ic_func();
+}
