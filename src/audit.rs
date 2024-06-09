@@ -7,6 +7,7 @@ use ra_ap_hir_def::FunctionId;
 use ra_ap_ide::RootDatabase;
 use ra_ap_syntax::SyntaxNode;
 
+#[derive(PartialEq)]
 pub enum Mode {
     TraceFunctions,
     ScanExports,
@@ -47,7 +48,9 @@ impl<'a> Builder<'a> {
         for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
             self.process_impl(impl_);
         }
-        debug!("Found {} functions", self.visited.len());
+        if self.mode == Mode::TraceFunctions {
+            info!("Found {} functions", self.visited.len());
+        }
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -118,14 +121,8 @@ impl<'a> Builder<'a> {
                     ast::MacroCall(m) => if let Some(m) = self.semantics.expand(&m) {
                         self.process_syntax_node(name, &m);
                     },
-                    ast::BlockExpr(b) => if b.unsafe_token().is_some() {
+                    ast::BlockExpr(b) =>if b.unsafe_token().is_some() {
                         warn!("{name} contains unsafe block!");
-                        for stmt in b.statements() {
-                            self.process_syntax_node(name, stmt.syntax());
-                        }
-                        if let Some(e) = b.tail_expr() {
-                            self.process_syntax_node(name, e.syntax());
-                        }
                     },
                     ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
                         if let CallableKind::Function(f) = call.kind() {
