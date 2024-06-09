@@ -2,8 +2,8 @@ use crate::utils::create_bar;
 use crate::utils::{crate_name, display_path};
 use console::style;
 use fxhash::FxHashSet;
-use indicatif::{MultiProgress, ProgressBar};
-use log::{debug, info, trace, warn};
+use indicatif::MultiProgress;
+use log::{debug, trace, warn};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
@@ -23,7 +23,6 @@ pub struct Builder<'a> {
     mode: Mode,
     whitelist: Vec<CrateId>,
     bars: &'a MultiProgress,
-    bar: Vec<ProgressBar>,
     pub visited: FxHashSet<FunctionId>,
 }
 impl<'a> Builder<'a> {
@@ -36,10 +35,6 @@ impl<'a> Builder<'a> {
     ) -> Self {
         Self {
             bars,
-            bar: vec![
-                create_bar(bars, "Auditing crate..."),
-                create_bar(bars, "Processing function..."),
-            ],
             db,
             krate,
             mode,
@@ -58,19 +53,14 @@ impl<'a> Builder<'a> {
         } else {
             name
         };
-        self.bar[0].set_message(format!("Auditing crate {name}..."));
+        let bar = create_bar(self.bars, format!("Auditing crate {name}..."));
         let module = self.krate.root_module();
         self.process_module(module);
         for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
             self.process_impl(impl_);
         }
-        if self.mode == Mode::TraceFunctions {
-            info!("Found {} functions", self.visited.len());
-        }
-        for bar in &self.bar {
-            bar.finish_and_clear();
-            self.bars.remove(bar);
-        }
+        bar.finish_and_clear();
+        self.bars.remove(&bar);
     }
     fn process_module(&mut self, module: hir::Module) {
         trace!("Processing module: {}", module.display(self.db));
@@ -110,7 +100,7 @@ impl<'a> Builder<'a> {
             return;
         }
         let name = display_path(func.into(), self.db);
-        self.bar[1].set_message(format!("Processing function: {name}..."));
+        let bar = create_bar(self.bars, format!("Processing function: {name}..."));
         if let ItemContainer::ExternBlock() = func.container(self.db) {
             self.report(
                 is_whitelisted,
@@ -143,6 +133,8 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+        bar.finish_and_clear();
+        self.bars.remove(&bar);
     }
     fn process_syntax_node(&mut self, name: &str, is_whitelisted: bool, ast: &SyntaxNode) {
         use ra_ap_hir::{AsAssocItem, CallableKind};
