@@ -73,18 +73,18 @@ impl<'a> Builder<'a> {
         trace!("Processing def: {:?}", def.name(self.db));
         match def {
             hir::ModuleDef::Module(module) => self.process_module(module),
-            hir::ModuleDef::Function(func) => self.process_function(func),
+            hir::ModuleDef::Function(func) => self.process_function(func, &mut Vec::new()),
             _ => (),
         }
     }
     fn process_impl(&mut self, impl_: hir::Impl) {
         impl_.items(self.db).into_iter().for_each(|item| {
             if let hir::AssocItem::Function(func) = item {
-                self.process_function(func);
+                self.process_function(func, &mut Vec::new());
             }
         });
     }
-    fn process_function(&mut self, func: hir::Function) {
+    fn process_function(&mut self, func: hir::Function, path: &mut Vec<String>) {
         use ra_ap_base_db::CrateOrigin;
         use ra_ap_hir::{HasAttrs, HasContainer, ItemContainer};
         use ra_ap_syntax::ast::AstNode;
@@ -92,21 +92,24 @@ impl<'a> Builder<'a> {
             return;
         }
         let krate = func.module(self.db).krate();
-        let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         if matches!(
             krate.origin(self.db),
             CrateOrigin::Rustc { .. } | CrateOrigin::Lang(_)
         ) {
             return;
         }
+        let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         let name = display_path(func.into(), self.db);
         let bar = create_bar(self.bars, format!("Processing function: {name}..."));
+        path.push(name.clone());
         if let ItemContainer::ExternBlock() = func.container(self.db) {
             self.report(
                 is_whitelisted,
+                path,
                 format!(
-                    "{} is an {} imports!",
-                    style(name.clone()).red(),
+                    "{} {} is an {} import!",
+                    style("[Import]").red().bold(),
+                    style(&name).red(),
                     style("external").red()
                 ),
             );
@@ -117,16 +120,18 @@ impl<'a> Builder<'a> {
                     warn!("cannot get source for {name}");
                     return;
                 };
-                self.process_syntax_node(&name, is_whitelisted, ast.value.syntax());
+                self.process_syntax_node(&name, is_whitelisted, path, ast.value.syntax());
             }
             Mode::ScanExports => {
                 let attrs = func.attrs(self.db);
                 if let Some(export) = attrs.export_name() {
                     self.report(
                         is_whitelisted,
+                        path,
                         format!(
-                            "{} exports {}",
-                            style(name.clone()).yellow(),
+                            "{} {} exports {}",
+                            style("[Export]").yellow().bold(),
+                            style(&name).yellow(),
                             style(export).yellow()
                         ),
                     );
@@ -135,38 +140,45 @@ impl<'a> Builder<'a> {
         }
         bar.finish_and_clear();
         self.bars.remove(&bar);
+        path.pop();
     }
-    fn process_syntax_node(&mut self, name: &str, is_whitelisted: bool, ast: &SyntaxNode) {
+    fn process_syntax_node(
+        &mut self,
+        name: &str,
+        is_whitelisted: bool,
+        path: &mut Vec<String>,
+        ast: &SyntaxNode,
+    ) {
         use ra_ap_hir::{AsAssocItem, CallableKind};
         use ra_ap_syntax::{ast, match_ast, AstNode};
         for node in ast.descendants() {
             match_ast! {
                 match node {
                     ast::MacroCall(m) => if let Some(m) = self.semantics.expand(&m) {
-                        self.process_syntax_node(name, is_whitelisted, &m);
+                        self.process_syntax_node(name, is_whitelisted, path, &m);
                     },
                     ast::BlockExpr(b) =>if b.unsafe_token().is_some() {
-                        self.report(is_whitelisted, format!("{} contains {} block!", style(name).yellow(), style("unsafe").yellow()));
+                        self.report(is_whitelisted, path, format!("{} {} contains {} blocks!", style("[Unsafe]").yellow().bold(), style(name).yellow(), style("unsafe").yellow()));
                     },
                     ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
                         if let CallableKind::Function(f) = call.kind() {
-                            self.process_function(f);
+                            self.process_function(f, path);
                         }
                     },
                     ast::AwaitExpr(e) => if let Some(f) = self.semantics.resolve_await_to_poll(&e) {
-                        self.process_function(f);
+                        self.process_function(f, path);
                     },
                     ast::PrefixExpr(e) => if let Some(f) = self.semantics.resolve_prefix_expr(&e) {
-                        self.process_function(f);
+                        self.process_function(f, path);
                     },
                     ast::IndexExpr(e) => if let Some(f) = self.semantics.resolve_index_expr(&e) {
-                        self.process_function(f);
+                        self.process_function(f, path);
                     },
                     ast::BinExpr(e) => if let Some(f) = self.semantics.resolve_bin_expr(&e) {
-                        self.process_function(f);
+                        self.process_function(f, path);
                     },
                     ast::TryExpr(e) => if let Some(f) = self.semantics.resolve_try_expr(&e) {
-                        self.process_function(f);
+                        self.process_function(f, path);
                     },
                     ast::Expr(e) => if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {
                         if let CallableKind::Function(f) = call.kind() {
@@ -174,7 +186,7 @@ impl<'a> Builder<'a> {
                                 let container = assoc.container(self.db);
                                 debug!("{} => {:?}", f.display(self.db), container);
                             }
-                            self.process_function(f);
+                            self.process_function(f, path);
                         }
                     },
                     _ => (),
@@ -182,9 +194,19 @@ impl<'a> Builder<'a> {
             }
         }
     }
-    fn report(&self, is_whitelisted: bool, msg: impl std::convert::AsRef<str>) {
+    fn report(&self, is_whitelisted: bool, path: &[String], msg: impl std::convert::AsRef<str>) {
         if !is_whitelisted {
             self.bars.println(msg).unwrap();
+            if path.len() > 1 {
+                let path: Vec<String> = path.iter().map(|p| style(p).cyan().to_string()).collect();
+                self.bars
+                    .println(format!(
+                        "  {} {}",
+                        style("└───> [Path]").green(),
+                        path.join(" -> ")
+                    ))
+                    .unwrap();
+            }
         }
     }
 }
