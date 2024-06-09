@@ -1,3 +1,4 @@
+use indicatif::{MultiProgress, ProgressBar};
 use ra_ap_hir as hir;
 use ra_ap_ide::RootDatabase;
 
@@ -47,4 +48,18 @@ fn assoc_item_path(assoc: hir::AssocItem, db: &RootDatabase) -> Option<String> {
             .and_then(|adt| hir::ModuleDef::from(adt).canonical_path(db)),
     }?;
     Some(format!("{container}::{name}"))
+}
+pub fn create_bar(
+    bars: &MultiProgress,
+    msg: impl Into<std::borrow::Cow<'static, str>>,
+) -> ProgressBar {
+    let pb = bars.add(ProgressBar::new_spinner());
+    pb.enable_steady_tick(std::time::Duration::from_millis(200));
+    pb.set_message(msg);
+    /*pb.set_style(
+        indicatif::ProgressStyle::default_spinner()
+            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+            .template("{spinner:.green} {msg}").unwrap(),
+    );*/
+    pb
 }

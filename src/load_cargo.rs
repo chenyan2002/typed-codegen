@@ -1,6 +1,7 @@
+use crate::utils::create_bar;
 use crate::Options;
 use anyhow::Result;
-use log::{debug, trace};
+use indicatif::{MultiProgress, ProgressBar};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::Crate;
 use ra_ap_ide::RootDatabase;
@@ -15,14 +16,17 @@ use std::path::Path;
 
 pub fn load_cargo_project(
     options: &Options,
+    bars: &MultiProgress,
 ) -> Result<(CargoWorkspace, RootDatabase, Vfs, TargetData)> {
+    let bar = create_bar(bars, "Loading project...");
     let path = options.manifest_path.as_path();
     let cargo_config = cargo_config(options);
     let load_config = load_config(options);
-    let mut ws = load_project_workspace(path, &cargo_config)?;
+    let pb = create_bar(bars, "Building...");
+    let mut ws = load_project_workspace(path, &cargo_config, &pb)?;
     if load_config.load_out_dirs_from_check {
         let build_scripts = ws.run_build_scripts(&cargo_config, &|msg| {
-            trace!("{}", msg);
+            pb.set_message(msg.to_string());
         })?;
         ws.set_build_scripts(build_scripts);
     }
@@ -32,17 +36,23 @@ pub fn load_cargo_project(
     };
     let target = find_package(&cargo, options.package.as_deref(), None)?;
     let (db, vfs, _proc) = load_workspace(ws, &cargo_config.extra_env, &load_config)?;
+    pb.finish_and_clear();
+    bar.finish();
     Ok((cargo, db, vfs, target))
 }
 
-fn load_project_workspace(path: &Path, cargo_config: &CargoConfig) -> Result<ProjectWorkspace> {
+fn load_project_workspace(
+    path: &Path,
+    cargo_config: &CargoConfig,
+    bar: &ProgressBar,
+) -> Result<ProjectWorkspace> {
     let path_buf = std::env::current_dir()?.join(path).canonicalize()?;
-    debug!("Loading project workspace: {:?}", path_buf);
+    bar.set_message(format!("Loading project workspace: {:?}", path_buf));
     let utf8_path = Utf8PathBuf::from_path_buf(path_buf).unwrap();
     let root = AbsPathBuf::assert(utf8_path);
     let root = ProjectManifest::discover_single(root.as_path())?;
     ProjectWorkspace::load(root, cargo_config, &|msg| {
-        trace!("{}", msg);
+        bar.set_message(msg.to_string());
     })
 }
 fn cargo_config(options: &Options) -> CargoConfig {

@@ -19,3 +19,5 @@ ra_ap_base_db = "0.0.217"
 ra_ap_syntax = "0.0.217"
 clap = { version = "4.5.4", features = ["derive"] }
 fxhash = "0.2.1"
+indicatif = "0.17.8"
+console = "0.15.8"

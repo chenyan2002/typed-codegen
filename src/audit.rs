@@ -1,6 +1,9 @@
+use crate::utils::create_bar;
 use crate::utils::{crate_name, display_path};
+use console::style;
 use fxhash::FxHashSet;
-use log::{debug, error, info, trace, warn};
+use indicatif::{MultiProgress, ProgressBar};
+use log::{debug, info, trace, warn};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
@@ -19,11 +22,24 @@ pub struct Builder<'a> {
     semantics: Semantics<'a, RootDatabase>,
     mode: Mode,
     whitelist: Vec<CrateId>,
+    bars: &'a MultiProgress,
+    bar: Vec<ProgressBar>,
     pub visited: FxHashSet<FunctionId>,
 }
 impl<'a> Builder<'a> {
-    pub fn new(db: &'a RootDatabase, krate: Crate, whitelist: Vec<CrateId>, mode: Mode) -> Self {
+    pub fn new(
+        bars: &'a MultiProgress,
+        db: &'a RootDatabase,
+        krate: Crate,
+        whitelist: Vec<CrateId>,
+        mode: Mode,
+    ) -> Self {
         Self {
+            bars,
+            bar: vec![
+                create_bar(bars, "Auditing crate..."),
+                create_bar(bars, "Processing function..."),
+            ],
             db,
             krate,
             mode,
@@ -42,7 +58,7 @@ impl<'a> Builder<'a> {
         } else {
             name
         };
-        info!("Auditing crate {}...", name);
+        self.bar[0].set_message(format!("Auditing crate {name}..."));
         let module = self.krate.root_module();
         self.process_module(module);
         for impl_ in hir::Impl::all_in_crate(self.db, self.krate) {
@@ -50,6 +66,10 @@ impl<'a> Builder<'a> {
         }
         if self.mode == Mode::TraceFunctions {
             info!("Found {} functions", self.visited.len());
+        }
+        for bar in &self.bar {
+            bar.finish_and_clear();
+            self.bars.remove(bar);
         }
     }
     fn process_module(&mut self, module: hir::Module) {
@@ -82,9 +102,7 @@ impl<'a> Builder<'a> {
             return;
         }
         let krate = func.module(self.db).krate();
-        if self.whitelist.contains(&CrateId::from(krate)) {
-            return;
-        }
+        let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         if matches!(
             krate.origin(self.db),
             CrateOrigin::Rustc { .. } | CrateOrigin::Lang(_)
@@ -92,9 +110,16 @@ impl<'a> Builder<'a> {
             return;
         }
         let name = display_path(func.into(), self.db);
-        trace!("Processing function: {name}");
+        self.bar[1].set_message(format!("Processing function: {name}..."));
         if let ItemContainer::ExternBlock() = func.container(self.db) {
-            error!("{name} is an external imports!");
+            self.report(
+                is_whitelisted,
+                format!(
+                    "{} is an {} imports!",
+                    style(name.clone()).red(),
+                    style("external").red()
+                ),
+            );
         }
         match self.mode {
             Mode::TraceFunctions => {
@@ -102,27 +127,34 @@ impl<'a> Builder<'a> {
                     warn!("cannot get source for {name}");
                     return;
                 };
-                self.process_syntax_node(&name, ast.value.syntax());
+                self.process_syntax_node(&name, is_whitelisted, ast.value.syntax());
             }
             Mode::ScanExports => {
                 let attrs = func.attrs(self.db);
                 if let Some(export) = attrs.export_name() {
-                    error!("{} exports {}", name, export);
+                    self.report(
+                        is_whitelisted,
+                        format!(
+                            "{} exports {}",
+                            style(name.clone()).yellow(),
+                            style(export).yellow()
+                        ),
+                    );
                 }
             }
         }
     }
-    fn process_syntax_node(&mut self, name: &str, ast: &SyntaxNode) {
+    fn process_syntax_node(&mut self, name: &str, is_whitelisted: bool, ast: &SyntaxNode) {
         use ra_ap_hir::{AsAssocItem, CallableKind};
         use ra_ap_syntax::{ast, match_ast, AstNode};
         for node in ast.descendants() {
             match_ast! {
                 match node {
                     ast::MacroCall(m) => if let Some(m) = self.semantics.expand(&m) {
-                        self.process_syntax_node(name, &m);
+                        self.process_syntax_node(name, is_whitelisted, &m);
                     },
                     ast::BlockExpr(b) =>if b.unsafe_token().is_some() {
-                        warn!("{name} contains unsafe block!");
+                        self.report(is_whitelisted, format!("{} contains {} block!", style(name).yellow(), style("unsafe").yellow()));
                     },
                     ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
                         if let CallableKind::Function(f) = call.kind() {
@@ -156,6 +188,11 @@ impl<'a> Builder<'a> {
                     _ => (),
                 }
             }
+        }
+    }
+    fn report(&self, is_whitelisted: bool, msg: impl std::convert::AsRef<str>) {
+        if !is_whitelisted {
+            self.bars.println(msg).unwrap();
         }
     }
 }

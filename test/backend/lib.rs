@@ -2,13 +2,12 @@ use my_library::{expand, MyTrait, T};
 
 #[ic_cdk::init]
 fn init() {
-    ic_certified_assets::init();
+    let _ = T::from(42);
 }
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
-    let _t: T = 42.into(); // This cannot locate to the from impl
-    let t = T::from(42); // This is okay
+    let t: T = 42.into(); // This cannot locate to the from impl
     t.chain().unsafe_inner().expect("ERR");
     format!("Hello, {}! {}", name.len(), expand!(name))
 }
