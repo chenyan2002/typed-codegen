@@ -202,7 +202,7 @@ impl<'a> Builder<'a> {
                 self.bars
                     .println(format!(
                         "  {} {}",
-                        style("└───> [Path]").green(),
+                        style("└────> [Path]").green(),
                         path.join(" -> ")
                     ))
                     .unwrap();

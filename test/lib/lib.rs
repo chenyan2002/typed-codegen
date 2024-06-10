@@ -21,7 +21,7 @@ impl MyTrait for T {
 }
 impl From<u8> for T {
     fn from(_: u8) -> T {
-        T
+        expand!(T)
     }
 }
 impl std::ops::Add for T {
