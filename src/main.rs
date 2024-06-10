@@ -40,7 +40,7 @@ enum Command {
         #[arg(short, long)]
         /// Trace unsafe functions from the main package. If false, scan external dependencies for import/export functions.
         trace_functions: bool,
-        #[arg(short, long, num_args = 1.., value_delimiter = ',', default_value = "ic0,ic-cdk")]
+        #[arg(short, long, num_args = 1.., value_delimiter = ',', default_value = "ic0,ic-cdk,anyhow")]
         /// List of whitelisted crates.
         whitelist: Vec<String>,
     },

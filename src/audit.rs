@@ -3,7 +3,7 @@ use crate::utils::{crate_name, display_path};
 use console::style;
 use fxhash::FxHashSet;
 use indicatif::MultiProgress;
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
@@ -101,6 +101,7 @@ impl<'a> Builder<'a> {
         let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         let name = display_path(func.into(), self.db);
         let bar = create_bar(self.bars, format!("Processing function: {name}..."));
+        trace!("Processing function: {name}...");
         path.push(name.clone());
         if let ItemContainer::ExternBlock() = func.container(self.db) {
             self.report(
@@ -149,7 +150,7 @@ impl<'a> Builder<'a> {
         path: &mut Vec<String>,
         ast: &SyntaxNode,
     ) {
-        use ra_ap_hir::{AsAssocItem, CallableKind};
+        use ra_ap_hir::{CallableKind, PathResolution};
         use ra_ap_syntax::{ast, match_ast, AstNode};
         for node in ast.descendants() {
             match_ast! {
@@ -180,12 +181,13 @@ impl<'a> Builder<'a> {
                     ast::TryExpr(e) => if let Some(f) = self.semantics.resolve_try_expr(&e) {
                         self.process_function(f, path);
                     },
+                    ast::PathExpr(p) => if let Some(p) = p.path() {
+                        if let Some(PathResolution::Def(hir::ModuleDef::Function(f))) = self.semantics.resolve_path(&p) {
+                            self.process_function(f, path);
+                        }
+                    },
                     ast::Expr(e) => if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {
                         if let CallableKind::Function(f) = call.kind() {
-                            if let Some(assoc) = f.as_assoc_item(self.db) {
-                                let container = assoc.container(self.db);
-                                debug!("{} => {:?}", f.display(self.db), container);
-                            }
                             self.process_function(f, path);
                         }
                     },
