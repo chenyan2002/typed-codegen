@@ -40,7 +40,7 @@ enum Command {
         #[arg(short, long)]
         /// Trace unsafe functions from the main package. If false, scan external dependencies for import/export functions.
         trace_functions: bool,
-        #[arg(short, long, num_args = 1.., value_delimiter = ',', default_value = "ic0,ic-cdk,anyhow")]
+        #[arg(short, long, num_args = 1.., value_delimiter = ',', default_value = "ic0,ic-cdk")]
         /// List of whitelisted crates.
         whitelist: Vec<String>,
     },
@@ -55,11 +55,12 @@ fn main() -> Result<()> {
     use load_cargo::{
         find_crate, find_non_root_crates, find_whitelisted_crates, load_cargo_project,
     };
-    let env = Env::default().default_filter_or("info");
+    let env = Env::default().default_filter_or("warn");
     env_logger::Builder::from_env(env)
         .format_target(false)
         .init();
     let bars = MultiProgress::new();
+    //bars.set_draw_target(indicatif::ProgressDrawTarget::hidden());
     let start = std::time::Instant::now();
     match Command::parse() {
         Command::Audit {

@@ -3,7 +3,7 @@ use crate::utils::{crate_name, display_path};
 use console::style;
 use fxhash::FxHashSet;
 use indicatif::MultiProgress;
-use log::{trace, warn};
+use log::{info, trace, warn};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
@@ -101,7 +101,7 @@ impl<'a> Builder<'a> {
         let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         let name = display_path(func.into(), self.db);
         let bar = create_bar(self.bars, format!("Processing function: {name}..."));
-        trace!("Processing function: {name}...");
+        info!("Processing function: {name}...");
         path.push(name.clone());
         if let ItemContainer::ExternBlock() = func.container(self.db) {
             self.report(
@@ -161,11 +161,6 @@ impl<'a> Builder<'a> {
                     ast::BlockExpr(b) =>if b.unsafe_token().is_some() {
                         self.report(is_whitelisted, path, format!("{} {} contains {} blocks!", style("[Unsafe]").yellow().bold(), style(name).yellow(), style("unsafe").yellow()));
                     },
-                    ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
-                        if let CallableKind::Function(f) = call.kind() {
-                            self.process_function(f, path);
-                        }
-                    },
                     ast::AwaitExpr(e) => if let Some(f) = self.semantics.resolve_await_to_poll(&e) {
                         self.process_function(f, path);
                     },
@@ -181,9 +176,51 @@ impl<'a> Builder<'a> {
                     ast::TryExpr(e) => if let Some(f) = self.semantics.resolve_try_expr(&e) {
                         self.process_function(f, path);
                     },
-                    ast::PathExpr(p) => if let Some(p) = p.path() {
+                    ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
+                        if let CallableKind::Function(f) = call.kind() {
+                            /*
+                            // Looking at m's type isn't correct. Need to inspect type parameter in the signature.
+                            if let ItemContainer::Trait(t) = f.container(self.db) {
+                                if let Some(ty) = self.semantics.type_of_expr(&m.clone().into()) {
+                                    let ty = ty.adjusted().display(self.db).to_string();
+                                    let impls = hir::Impl::all_for_trait(self.db, t);
+                                    if let Some(impl_) = impls.iter().find(|i| i.self_ty(self.db).display(self.db).to_string() == ty) {
+                                        let func = impl_.items(self.db).into_iter().find_map(|assoc| {
+                                            if let AssocItem::Function(func) = assoc {
+                                                if func.name(self.db) == f.name(self.db) {
+                                                    return Some(func);
+                                                }
+                                            };
+                                            None
+                                        });
+                                        if let Some(f) = func {
+                                            warn!("{m} : {ty}");
+                                            self.process_function(f, path);
+                                        }
+                                    }
+                                }
+                            }
+                            */
+                            self.process_function(f, path);
+                        }
+                    },
+                    ast::PathExpr(path_expr) => if let Some(p) = path_expr.path() {
                         if let Some(PathResolution::Def(hir::ModuleDef::Function(f))) = self.semantics.resolve_path(&p) {
                             self.process_function(f, path);
+                            /*
+                            // This is an over-approximation. Ideally, we can find the right impl.
+                            if let ItemContainer::Trait(t) = f.container(self.db) {
+                                let impls = hir::Impl::all_for_trait(self.db, t);
+                                let impls: Vec<_> = impls.into_iter().flat_map(|i| i.items(self.db).into_iter().filter_map(|assoc| match assoc {
+                                    AssocItem::Function(func) if func.name(self.db) == f.name(self.db) => Some(func),
+                                    _ => None,
+                                })).collect();
+                                //warn!("{} {} => {:?}", node, impls.len(), t);
+                                for f in impls {
+                                    self.process_function(f, path);
+                                }
+                            }
+                            */
                         }
                     },
                     ast::Expr(e) => if let Some(call) = self.semantics.resolve_expr_as_callable(&e) {

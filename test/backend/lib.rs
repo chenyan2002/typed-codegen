@@ -2,12 +2,12 @@ use my_library::{expand, MyTrait, T};
 
 #[ic_cdk::init]
 fn init() {
-    let _ = T::from(42);
+    let _: T = 42.into();  // doesn't report unsafe at the moment
 }
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
-    let t: T = 42.into(); // This cannot locate to the from impl
+    let t = T::from(42);
     t.chain().unsafe_inner().expect("ERR");
     format!("Hello, {}! {}", name.len(), expand!(name))
 }
