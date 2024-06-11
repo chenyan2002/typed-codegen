@@ -27,6 +27,9 @@ pub struct Options {
     #[arg(long, conflicts_with("all_features"))]
     /// List of features to activate
     pub features: Vec<String>,
+    #[arg(short, long)]
+    /// Disable progress bar, and use log
+    pub verbose: bool,
     #[arg(hide = true, long)]
     pub expand_proc_macros: bool,
 }
@@ -50,18 +53,35 @@ enum Command {
         options: Options,
     },
 }
+impl Command {
+    fn is_verbose(&self) -> bool {
+        match self {
+            Command::Audit { options, .. } => options.verbose,
+            Command::Candid { options, .. } => options.verbose,
+        }
+    }
+}
 
 fn main() -> Result<()> {
     use load_cargo::{
         find_crate, find_non_root_crates, find_whitelisted_crates, load_cargo_project,
     };
-    let env = Env::default().default_filter_or("info");
+    let cmd = Command::parse();
+    let is_verbose = cmd.is_verbose();
+    let env = if is_verbose {
+        Env::default().default_filter_or("info")
+    } else {
+        Env::default().default_filter_or("warn")
+    };
     env_logger::Builder::from_env(env)
         .format_target(false)
         .init();
     let bars = MultiProgress::new();
+    if is_verbose {
+        bars.set_draw_target(indicatif::ProgressDrawTarget::hidden());
+    }
     let start = std::time::Instant::now();
-    match Command::parse() {
+    match cmd {
         Command::Audit {
             mut options,
             trace_functions,
@@ -74,8 +94,14 @@ fn main() -> Result<()> {
             let mut size = 0;
             if trace_functions {
                 let krate = find_crate(&db, &vfs, &target)?;
-                let mut builder =
-                    audit::Builder::new(&bars, &db, krate, whitelist, Mode::TraceFunctions);
+                let mut builder = audit::Builder::new(
+                    &bars,
+                    is_verbose,
+                    &db,
+                    krate,
+                    whitelist,
+                    Mode::TraceFunctions,
+                );
                 builder.build();
                 size += builder.visited.len();
             } else {
@@ -93,6 +119,7 @@ fn main() -> Result<()> {
                     bar.inc(1);
                     let mut builder = audit::Builder::new(
                         &bars,
+                        is_verbose,
                         &db,
                         krate,
                         whitelist.clone(),

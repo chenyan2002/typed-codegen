@@ -23,7 +23,8 @@ fn path(def: hir::ModuleDef, db: &RootDatabase) -> Option<String> {
         assoc_item_path(assoc, db)
     } else {
         def.canonical_path(db)
-    };
+    }
+    .or_else(|| def.name(db).map(|name| name.display(db).to_string()));
     if let Some(relative_path) = relative_path {
         if !path.is_empty() {
             path.push_str("::");
@@ -56,10 +57,5 @@ pub fn create_bar(
     let pb = bars.add(ProgressBar::new_spinner());
     pb.enable_steady_tick(std::time::Duration::from_millis(200));
     pb.set_message(msg);
-    /*pb.set_style(
-        indicatif::ProgressStyle::default_spinner()
-            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
-            .template("{spinner:.green} {msg}").unwrap(),
-    );*/
     pb
 }
