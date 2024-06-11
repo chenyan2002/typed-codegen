@@ -3,7 +3,7 @@ use crate::utils::{crate_name, display_path};
 use console::style;
 use fxhash::FxHashSet;
 use indicatif::MultiProgress;
-use log::{info, trace, warn};
+use log::{error, info, trace};
 use ra_ap_base_db::CrateId;
 use ra_ap_hir::{self as hir, Crate, HirDisplay, Semantics};
 use ra_ap_hir_def::FunctionId;
@@ -21,6 +21,7 @@ pub struct Builder<'a> {
     krate: Crate,
     semantics: Semantics<'a, RootDatabase>,
     mode: Mode,
+    is_verbose: bool,
     whitelist: Vec<CrateId>,
     bars: &'a MultiProgress,
     pub visited: FxHashSet<FunctionId>,
@@ -28,6 +29,7 @@ pub struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub fn new(
         bars: &'a MultiProgress,
+        is_verbose: bool,
         db: &'a RootDatabase,
         krate: Crate,
         whitelist: Vec<CrateId>,
@@ -35,6 +37,7 @@ impl<'a> Builder<'a> {
     ) -> Self {
         Self {
             bars,
+            is_verbose,
             db,
             krate,
             mode,
@@ -100,8 +103,9 @@ impl<'a> Builder<'a> {
         }
         let is_whitelisted = self.whitelist.contains(&CrateId::from(krate));
         let name = display_path(func.into(), self.db);
-        let bar = create_bar(self.bars, format!("Processing function: {name}..."));
-        info!("Processing function: {name}...");
+        let msg = format!("Processing function: {name}...");
+        info!("{msg}");
+        let bar = create_bar(self.bars, msg);
         path.push(name.clone());
         if let ItemContainer::ExternBlock() = func.container(self.db) {
             self.report(
@@ -118,7 +122,7 @@ impl<'a> Builder<'a> {
         match self.mode {
             Mode::TraceFunctions => {
                 let Some(ast) = self.semantics.source(func) else {
-                    warn!("cannot get source for {name}");
+                    self.report(is_whitelisted, &[], format!("cannot get source for {name}"));
                     return;
                 };
                 self.process_syntax_node(&name, is_whitelisted, path, ast.value.syntax());
@@ -233,18 +237,26 @@ impl<'a> Builder<'a> {
             }
         }
     }
-    fn report(&self, is_whitelisted: bool, path: &[String], msg: impl std::convert::AsRef<str>) {
+    fn report(
+        &self,
+        is_whitelisted: bool,
+        path: &[String],
+        msg: impl std::convert::AsRef<str> + std::fmt::Display,
+    ) {
         if !is_whitelisted {
-            self.bars.println(msg).unwrap();
+            if self.is_verbose {
+                error!("{msg}");
+            } else {
+                self.bars.println(msg).unwrap();
+            }
             if path.len() > 1 {
                 let path: Vec<String> = path.iter().map(|p| style(p).cyan().to_string()).collect();
-                self.bars
-                    .println(format!(
-                        "  {} {}",
-                        style("└────> [Path]").green(),
-                        path.join(" -> ")
-                    ))
-                    .unwrap();
+                let path = format!("  {} {}", style("└────> [Path]").green(), path.join(" -> "));
+                if self.is_verbose {
+                    error!("{path}");
+                } else {
+                    self.bars.println(path).unwrap();
+                }
             }
         }
     }
