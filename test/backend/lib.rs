@@ -2,7 +2,7 @@ use my_library::{expand, MyTrait, T};
 
 #[ic_cdk::init]
 fn init() {
-    let _: T = 42.into();  // doesn't report unsafe at the moment
+    let _: T = 42.into(); // doesn't report unsafe at the moment
 }
 
 #[ic_cdk::query]

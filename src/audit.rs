@@ -180,9 +180,9 @@ impl<'a> Builder<'a> {
                     ast::TryExpr(e) => if let Some(f) = self.semantics.resolve_try_expr(&e) {
                         self.process_function(f, path);
                     },
-                    ast::MethodCallExpr(m) => if let Some(call) = self.semantics.resolve_method_call_as_callable(&m) {
-                        if let CallableKind::Function(f) = call.kind() {
-                            /*
+                    ast::MethodCallExpr(m) => if let Some(f) = self.semantics.resolve_method_call(&m) {
+                        self.process_function(f, path);
+                        /*
                             // Looking at m's type isn't correct. Need to inspect type parameter in the signature.
                             if let ItemContainer::Trait(t) = f.container(self.db) {
                                 if let Some(ty) = self.semantics.type_of_expr(&m.clone().into()) {
@@ -204,9 +204,7 @@ impl<'a> Builder<'a> {
                                     }
                                 }
                             }
-                            */
-                            self.process_function(f, path);
-                        }
+                         */
                     },
                     ast::PathExpr(path_expr) => if let Some(p) = path_expr.path() {
                         if let Some(PathResolution::Def(hir::ModuleDef::Function(f))) = self.semantics.resolve_path(&p) {
