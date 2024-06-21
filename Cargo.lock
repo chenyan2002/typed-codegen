@@ -115,6 +115,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-canister"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "console",
+ "env_logger",
+ "fxhash",
+ "indicatif",
+ "log",
+ "ra_ap_base_db",
+ "ra_ap_hir",
+ "ra_ap_hir_def",
+ "ra_ap_ide",
+ "ra_ap_load-cargo",
+ "ra_ap_paths",
+ "ra_ap_project_model",
+ "ra_ap_syntax",
+ "ra_ap_vfs",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1809,28 +1831,6 @@ name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
-
-[[package]]
-name = "typed-codegen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "console",
- "env_logger",
- "fxhash",
- "indicatif",
- "log",
- "ra_ap_base_db",
- "ra_ap_hir",
- "ra_ap_hir_def",
- "ra_ap_ide",
- "ra_ap_load-cargo",
- "ra_ap_paths",
- "ra_ap_project_model",
- "ra_ap_syntax",
- "ra_ap_vfs",
-]
 
 [[package]]
 name = "unicase"

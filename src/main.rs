@@ -11,7 +11,15 @@ mod load_cargo;
 mod utils;
 
 #[derive(Parser)]
-pub struct Options {
+struct App {
+    #[arg(hide=true, value_parser=clap::builder::PossibleValuesParser::new(["canister"]))]
+    dummy: Option<String>,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Parser)]
+struct Options {
     #[arg(short, long, default_value = ".")]
     /// The path for Cargo project root.
     pub manifest_path: PathBuf,
@@ -66,7 +74,7 @@ fn main() -> Result<()> {
     use load_cargo::{
         find_crate, find_non_root_crates, find_whitelisted_crates, load_cargo_project,
     };
-    let cmd = Command::parse();
+    let cmd = App::parse().command;
     let is_verbose = cmd.is_verbose();
     let env = if is_verbose {
         Env::default().default_filter_or("info")
