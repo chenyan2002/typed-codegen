@@ -2,6 +2,8 @@
 path = "candid/my_service.did"
 output_dir = "src/" 
 template = "candid/stub.hbs"
+[service.bindgen]
+nat.use_type = "u128"
 
 [imports.ic]
 path = "candid/ic.did"

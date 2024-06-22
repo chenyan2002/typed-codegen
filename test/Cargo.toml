@@ -1,3 +1,3 @@
 [workspace]
-members = ["backend", "lib"]
+members = ["backend", "lib", "greet"]
 resolver = "2"

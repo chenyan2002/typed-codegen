@@ -248,11 +248,13 @@ dependencies = [
  "candid",
  "candid_parser",
  "clap",
+ "codespan-reporting",
  "console",
  "env_logger",
  "fxhash",
  "indicatif",
  "log",
+ "proc-macro2",
  "ra_ap_base_db",
  "ra_ap_hir",
  "ra_ap_hir_def",
@@ -263,6 +265,7 @@ dependencies = [
  "ra_ap_syntax",
  "ra_ap_vfs",
  "serde",
+ "syn 2.0.66",
  "toml",
 ]
 

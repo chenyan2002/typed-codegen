@@ -8,6 +8,7 @@ use std::path::PathBuf;
 mod audit;
 mod bindgen;
 mod candid;
+mod check;
 mod load_cargo;
 mod utils;
 

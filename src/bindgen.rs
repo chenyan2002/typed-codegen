@@ -29,12 +29,19 @@ pub fn run(path: &Path) -> Result<()> {
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
     if let Some(serv) = &config.service {
+        assert!(serv.methods.is_none());
+        assert!(serv.path.is_some());
         if let Some(path) = &serv.output_dir {
             src_dir = path;
         }
         let name = src_dir.join("lib.rs");
-        let res = generate_service(serv)?;
-        println!("{}\n{}", name.display(), res);
+        if name.exists() {
+            let (config, _) = get_config(serv, "stub")?;
+            crate::check::check_rust(&name, &serv.path.clone().unwrap(), &config)?;
+        } else {
+            let res = generate_service(serv)?;
+            println!("{}\n{}", name.display(), res);
+        }
     }
     for (name, item) in &config.imports {
         let path = item.output_dir.as_ref().unwrap_or(src_dir);
@@ -51,7 +58,6 @@ fn generate_import(item: &Item) -> Result<String> {
     Ok(res)
 }
 fn generate_service(item: &Item) -> Result<String> {
-    assert!(item.methods.is_none());
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "stub")?;
     let res = compile(&config, &env, &actor, external);
