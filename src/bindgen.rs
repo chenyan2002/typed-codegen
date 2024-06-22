@@ -5,8 +5,10 @@ use candid_parser::{
     bindings::analysis::project_methods, configs::Configs, utils::CandidSource, Deserialize,
     Principal,
 };
+use log::{info, warn};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use toml::{Table, Value};
 
 #[derive(Deserialize)]
@@ -40,14 +42,16 @@ pub fn run(path: &Path) -> Result<()> {
             crate::check::check_rust(&name, &serv.path.clone().unwrap(), &config)?;
         } else {
             let res = generate_service(serv)?;
-            println!("{}\n{}", name.display(), res);
+            info!("Generating main file {}", name.display());
+            println!("{}", res);
         }
     }
     for (name, item) in &config.imports {
         let path = item.output_dir.as_ref().unwrap_or(src_dir);
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
-        println!("{}\n{}", name.display(), res);
+        info!("Generating import binding {}", name.display());
+        println!("{}", res);
     }
     Ok(())
 }
@@ -55,13 +59,22 @@ fn generate_import(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "canister_call")?;
     let res = compile(&config, &env, &actor, external);
+    let res = invoke_rustfmt(res);
     Ok(res)
 }
 fn generate_service(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "stub")?;
     let res = compile(&config, &env, &actor, external);
+    let res = invoke_rustfmt(res);
     Ok(res)
+}
+
+fn invoke_rustfmt(content: String) -> String {
+    invoke_rustfmt_(&content).unwrap_or_else(|_| {
+        warn!("rustfmt failed, using unformatted code.");
+        content
+    })
 }
 fn get_config(item: &Item, target: &str) -> Result<(Config, ExternalConfig)> {
     let mut external = ExternalConfig::default();
@@ -110,4 +123,27 @@ fn load_toml(path: &Path) -> Result<Entry> {
         }
     }
     Ok(Entry { service, imports })
+}
+fn invoke_rustfmt_(content: &str) -> Result<String> {
+    use std::io::Write;
+    let mut fmt = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .arg("--emit")
+        .arg("stdout")
+        .arg("--quiet")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut stdin = fmt.stdin.take().unwrap();
+    let content = content.to_string();
+    std::thread::spawn(move || {
+        stdin.write_all(content.as_bytes()).unwrap();
+    });
+    let output = fmt.wait_with_output()?;
+    if output.status.success() {
+        Ok(String::from_utf8(output.stdout)?)
+    } else {
+        Err(anyhow::anyhow!("rustfmt failed"))
+    }
 }
