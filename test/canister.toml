@@ -1,0 +1,18 @@
+[service]
+path = "candid/my_service.did"
+output_dir = "src/" 
+template = "candid/stub.hbs"
+
+[imports.ic]
+path = "candid/ic.did"
+methods = ["provisional_create_canister_with_cycles", "install_code"]
+template = "candid/call.hbs"
+[imports.ic.bindgen]
+visibility = "pub(crate)"
+
+
+[imports.nns]
+path = "candid/nns.did"
+canister_id = "rrkah-fqaaa-aaaaa-aaaaq-cai"  
+methods = ["list_neurons"]
+

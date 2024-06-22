@@ -20,3 +20,8 @@ clap = { version = "4.5.4", features = ["derive"] }
 fxhash = "0.2.1"
 indicatif = "0.17.8"
 console = "0.15.8"
+candid_parser = { version = "0.2.0-beta.2", path = "../candid/rust/candid_parser" }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+serde = "1.0.203"
+candid = { version = "0.10.9", path = "../candid/rust/candid" }
+

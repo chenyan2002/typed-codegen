@@ -6,6 +6,7 @@ use indicatif::{HumanDuration, MultiProgress, ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 
 mod audit;
+mod bindgen;
 mod candid;
 mod load_cargo;
 mod utils;
@@ -60,12 +61,19 @@ enum Command {
         #[command(flatten)]
         options: Options,
     },
+    /// Generate Rust bindings from Candid interface
+    Bindgen {
+        #[arg(short, long, default_value = ".")]
+        /// The path for canister.toml file
+        canister_path: PathBuf,
+    },
 }
 impl Command {
     fn is_verbose(&self) -> bool {
         match self {
             Command::Audit { options, .. } => options.verbose,
             Command::Candid { options, .. } => options.verbose,
+            Command::Bindgen { .. } => true,
         }
     }
 }
@@ -145,6 +153,7 @@ fn main() -> Result<()> {
                 HumanDuration(start.elapsed())
             );
         }
+        Command::Bindgen { canister_path } => bindgen::run(&canister_path)?,
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
             let (_, db, vfs, target) = load_cargo_project(&options, &bars)?;
