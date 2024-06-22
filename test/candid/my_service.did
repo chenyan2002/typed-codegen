@@ -1,3 +1,6 @@
-service : {
+type List = opt record { int; List };
+type Profile = record { name: text; age: nat8 };
+service : (List) -> {
   greet : (text) -> (text);
+  get_profile : (nat) -> (variant { Ok: Profile; Err: text }) query;
 }

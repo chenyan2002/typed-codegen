@@ -5,14 +5,20 @@ template = "candid/stub.hbs"
 
 [imports.ic]
 path = "candid/ic.did"
-methods = ["provisional_create_canister_with_cycles", "install_code"]
-template = "candid/call.hbs"
+methods = ["deposit_cycles", "raw_rand"]
+template = "candid/agent.hbs"
 [imports.ic.bindgen]
 visibility = "pub(crate)"
-
 
 [imports.nns]
 path = "candid/nns.did"
 canister_id = "rrkah-fqaaa-aaaaa-aaaaq-cai"  
-methods = ["list_neurons"]
+template = "candid/call.hbs"
+methods = ["get_neuron_info"]
+[imports.nns.bindgen]
+Result_5.name = "NeuronResult"
+
+[imports.my_service]
+path = "candid/my_service.did"
+methods = []   # def only
 

@@ -15,8 +15,7 @@ struct Item {
     canister_id: Option<Principal>,
     output_dir: Option<PathBuf>,
     template: Option<String>,
-    #[serde(default)]
-    methods: Vec<String>,
+    methods: Option<Vec<String>>,
     bindgen: Option<Table>,
 }
 #[derive(Deserialize)]
@@ -52,7 +51,7 @@ fn generate_import(item: &Item) -> Result<String> {
     Ok(res)
 }
 fn generate_service(item: &Item) -> Result<String> {
-    assert!(item.methods.is_empty());
+    assert!(item.methods.is_none());
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "stub")?;
     let res = compile(&config, &env, &actor, external);
@@ -83,8 +82,10 @@ fn load_candid(item: &Item) -> Result<(TypeEnv, Option<Type>)> {
         return Err(anyhow::anyhow!("path or canister_id must be provided"));
     };
     let (env, mut actor) = src.load()?;
-    if !item.methods.is_empty() {
-        actor = project_methods(&env, &actor, &item.methods);
+    match item.methods.as_deref() {
+        None => (),
+        Some([]) => actor = None,
+        Some(methods) => actor = project_methods(&env, &actor, methods),
     }
     Ok((env, actor))
 }
