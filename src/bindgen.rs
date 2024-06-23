@@ -31,27 +31,32 @@ pub fn run(path: &Path) -> Result<()> {
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
     if let Some(serv) = &config.service {
-        assert!(serv.methods.is_none());
-        assert!(serv.path.is_some());
+        if serv.methods.is_some() {
+            return Err(anyhow::anyhow!("service.methods shouldn't be present"));
+        }
+        if serv.path.is_none() {
+            return Err(anyhow::anyhow!("service.path is required"));
+        }
         if let Some(path) = &serv.output_dir {
             src_dir = path;
         }
         let name = src_dir.join("lib.rs");
         if name.exists() {
+            info!("Checking main file {}", name.display());
             let (config, _) = get_config(serv, "stub")?;
             crate::check::check_rust(&name, &serv.path.clone().unwrap(), &config)?;
         } else {
-            let res = generate_service(serv)?;
             info!("Generating main file {}", name.display());
-            println!("{}", res);
+            let res = generate_service(serv)?;
+            eprintln!("{}", res);
         }
     }
     for (name, item) in &config.imports {
         let path = item.output_dir.as_ref().unwrap_or(src_dir);
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
-        info!("Generating import binding {}", name.display());
-        println!("{}", res);
+        info!("Generating import {}", name.display());
+        eprintln!("{}", res);
     }
     Ok(())
 }
@@ -70,12 +75,6 @@ fn generate_service(item: &Item) -> Result<String> {
     Ok(res)
 }
 
-fn invoke_rustfmt(content: String) -> String {
-    invoke_rustfmt_(&content).unwrap_or_else(|_| {
-        warn!("rustfmt failed, using unformatted code.");
-        content
-    })
-}
 fn get_config(item: &Item, target: &str) -> Result<(Config, ExternalConfig)> {
     let mut external = ExternalConfig::default();
     if let Some(template) = &item.template {
@@ -93,14 +92,16 @@ fn get_config(item: &Item, target: &str) -> Result<(Config, ExternalConfig)> {
     Ok((config, external))
 }
 fn load_candid(item: &Item) -> Result<(TypeEnv, Option<Type>)> {
-    let src = if let Some(p) = &item.path {
-        CandidSource::File(p)
-    } else if let Some(_id) = item.canister_id {
-        todo!("canister_id not implemented")
+    let (env, mut actor) = if let Some(p) = &item.path {
+        CandidSource::File(p).load()?
+    } else if let Some(id) = item.canister_id {
+        // TODO: handle versioning
+        info!("Fetching Candid interface from {id}");
+        let src = fetch_metadata(id)?;
+        CandidSource::Text(&src).load()?
     } else {
         return Err(anyhow::anyhow!("path or canister_id must be provided"));
     };
-    let (env, mut actor) = src.load()?;
     match item.methods.as_deref() {
         None => (),
         Some([]) => actor = None,
@@ -124,6 +125,12 @@ fn load_toml(path: &Path) -> Result<Entry> {
     }
     Ok(Entry { service, imports })
 }
+fn invoke_rustfmt(content: String) -> String {
+    invoke_rustfmt_(&content).unwrap_or_else(|_| {
+        warn!("rustfmt failed, using unformatted code.");
+        content
+    })
+}
 fn invoke_rustfmt_(content: &str) -> Result<String> {
     use std::io::Write;
     let mut fmt = Command::new("rustfmt")
@@ -146,4 +153,15 @@ fn invoke_rustfmt_(content: &str) -> Result<String> {
     } else {
         Err(anyhow::anyhow!("rustfmt failed"))
     }
+}
+
+#[tokio::main]
+async fn fetch_metadata(id: Principal) -> Result<String> {
+    let agent = ic_agent::Agent::builder()
+        .with_url("https://icp0.io")
+        .build()?;
+    let blob = agent
+        .read_state_canister_metadata(id, "candid:service")
+        .await?;
+    Ok(String::from_utf8(blob)?)
 }

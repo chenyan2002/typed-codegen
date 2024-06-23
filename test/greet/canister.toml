@@ -13,7 +13,6 @@ template = "candid/agent.hbs"
 visibility = "pub(crate)"
 
 [imports.nns]
-path = "candid/nns.did"
 canister_id = "rrkah-fqaaa-aaaaa-aaaaq-cai"  
 template = "candid/call.hbs"
 methods = ["get_neuron_info"]
