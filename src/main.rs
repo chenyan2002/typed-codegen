@@ -69,8 +69,8 @@ enum Command {
         /// The path for canister.toml file
         canister_path: PathBuf,
         #[arg(short, long)]
-        /// Display the generated code in stdin, not writing to disk.
-        dry_run: bool,
+        /// Write the bindgen to disk
+        write: bool,
     },
 }
 impl Command {
@@ -160,8 +160,8 @@ fn main() -> Result<()> {
         }
         Command::Bindgen {
             canister_path,
-            dry_run,
-        } => bindgen::run(&canister_path, dry_run)?,
+            write,
+        } => bindgen::run(&canister_path, write)?,
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
             let (_, db, vfs, target) = load_cargo_project(&options, &bars)?;

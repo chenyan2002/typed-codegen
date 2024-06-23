@@ -26,7 +26,7 @@ struct Entry {
     imports: BTreeMap<String, Item>,
 }
 
-pub fn run(path: &Path, dry_run: bool) -> Result<()> {
+pub fn run(path: &Path, write: bool) -> Result<()> {
     let path = path.join("canister.toml");
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
@@ -48,10 +48,10 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
         } else {
             info!("Generating main file {}", name.display());
             let res = generate_service(serv)?;
-            if dry_run {
-                info!("\n{}", res);
-            } else {
+            if write {
                 std::fs::write(name, res)?;
+            } else {
+                info!("\n{}", res);
             }
         }
     }
@@ -60,10 +60,10 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
         info!("Generating import {}", name.display());
-        if dry_run {
-            info!("\n{}", res);
-        } else {
+        if write {
             std::fs::write(name, res)?;
+        } else {
+            info!("\n{}", res);
         }
     }
     Ok(())
