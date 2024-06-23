@@ -265,6 +265,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "greet"
+version = "0.1.0"
+dependencies = [
+ "candid",
+ "ic-cdk",
+ "ic-cdk-timers",
+ "serde",
+]
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

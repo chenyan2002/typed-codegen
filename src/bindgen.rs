@@ -26,7 +26,7 @@ struct Entry {
     imports: BTreeMap<String, Item>,
 }
 
-pub fn run(path: &Path) -> Result<()> {
+pub fn run(path: &Path, dry_run: bool) -> Result<()> {
     let path = path.join("canister.toml");
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
@@ -42,13 +42,17 @@ pub fn run(path: &Path) -> Result<()> {
         }
         let name = src_dir.join("lib.rs");
         if name.exists() {
-            info!("Checking main file {}", name.display());
+            info!("Checking main file {} (experimental)", name.display());
             let (config, _) = get_config(serv, "stub")?;
             crate::check::check_rust(&name, &serv.path.clone().unwrap(), &config)?;
         } else {
             info!("Generating main file {}", name.display());
             let res = generate_service(serv)?;
-            eprintln!("{}", res);
+            if dry_run {
+                info!("\n{}", res);
+            } else {
+                std::fs::write(name, res)?;
+            }
         }
     }
     for (name, item) in &config.imports {
@@ -56,7 +60,11 @@ pub fn run(path: &Path) -> Result<()> {
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
         info!("Generating import {}", name.display());
-        eprintln!("{}", res);
+        if dry_run {
+            info!("\n{}", res);
+        } else {
+            std::fs::write(name, res)?;
+        }
     }
     Ok(())
 }

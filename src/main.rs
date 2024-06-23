@@ -57,6 +57,7 @@ enum Command {
         /// List of whitelisted crates.
         whitelist: Vec<String>,
     },
+    #[command(hide = true)]
     /// Export Candid interface from Rust project
     Candid {
         #[command(flatten)]
@@ -67,6 +68,9 @@ enum Command {
         #[arg(short, long, default_value = ".")]
         /// The path for canister.toml file
         canister_path: PathBuf,
+        #[arg(short, long)]
+        /// Display the generated code in stdin, not writing to disk.
+        dry_run: bool,
     },
 }
 impl Command {
@@ -154,7 +158,10 @@ fn main() -> Result<()> {
                 HumanDuration(start.elapsed())
             );
         }
-        Command::Bindgen { canister_path } => bindgen::run(&canister_path)?,
+        Command::Bindgen {
+            canister_path,
+            dry_run,
+        } => bindgen::run(&canister_path, dry_run)?,
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
             let (_, db, vfs, target) = load_cargo_project(&options, &bars)?;
