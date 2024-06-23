@@ -10,7 +10,7 @@ path = "candid/ic.did"
 methods = ["deposit_cycles", "raw_rand"]
 template = "candid/agent.hbs"
 [imports.ic.bindgen]
-visibility = "pub(crate)"
+#visibility = "pub(crate)"
 
 [imports.nns]
 canister_id = "rrkah-fqaaa-aaaaa-aaaaq-cai"  
@@ -18,6 +18,10 @@ template = "candid/call.hbs"
 methods = ["get_neuron_info"]
 [imports.nns.bindgen]
 Result_5.name = "NeuronResult"
+age_seconds.name = "AGE"
+NeuronInfo.attributes = "#[derive(CandidType, Deserialize, Debug)]"
+NeuronInfo.record.visibility = ""
+NeuronId.use_type = "MyNeuronId"
 
 [imports.my_service]
 path = "candid/my_service.did"

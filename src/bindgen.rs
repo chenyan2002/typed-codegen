@@ -26,7 +26,7 @@ struct Entry {
     imports: BTreeMap<String, Item>,
 }
 
-pub fn run(path: &Path, write: bool) -> Result<()> {
+pub fn run(path: &Path, is_write: bool) -> Result<()> {
     let path = path.join("canister.toml");
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
@@ -48,11 +48,7 @@ pub fn run(path: &Path, write: bool) -> Result<()> {
         } else {
             info!("Generating main file {}", name.display());
             let res = generate_service(serv)?;
-            if write {
-                std::fs::write(name, res)?;
-            } else {
-                info!("\n{}", res);
-            }
+            output(is_write, &name, res)?;
         }
     }
     for (name, item) in &config.imports {
@@ -60,11 +56,7 @@ pub fn run(path: &Path, write: bool) -> Result<()> {
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
         info!("Generating import {}", name.display());
-        if write {
-            std::fs::write(name, res)?;
-        } else {
-            info!("\n{}", res);
-        }
+        output(is_write, &name, res)?;
     }
     Ok(())
 }
@@ -72,15 +64,31 @@ fn generate_import(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "canister_call")?;
     let res = compile(&config, &env, &actor, external);
-    let res = invoke_rustfmt(res);
     Ok(res)
 }
 fn generate_service(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "stub")?;
     let res = compile(&config, &env, &actor, external);
-    let res = invoke_rustfmt(res);
     Ok(res)
+}
+fn output(is_write: bool, name: &Path, content: String) -> Result<()> {
+    use prettydiff::basic::DiffOp;
+    let content = invoke_rustfmt(content);
+    if is_write {
+        std::fs::write(name, content)?;
+    } else if name.exists() {
+        let existing = std::fs::read_to_string(name)?;
+        let diff = prettydiff::diff_chars(&existing, &content).set_highlight_whitespace(false);
+        if matches!(diff.diff()[..], [DiffOp::Equal(_)]) {
+            info!("No diff detected");
+        } else {
+            info!("{}", diff);
+        }
+    } else {
+        info!("\n{content}");
+    }
+    Ok(())
 }
 
 fn get_config(item: &Item, target: &str) -> Result<(Config, ExternalConfig)> {
