@@ -3,14 +3,12 @@ path = "candid/my_service.did"
 output_dir = "src/" 
 template = "candid/stub.hbs"
 [service.bindgen]
-nat.use_type = "u128"
+#nat.use_type = "u128"
 
 [imports.ic]
 path = "candid/ic.did"
 methods = ["deposit_cycles", "raw_rand"]
 template = "candid/agent.hbs"
-[imports.ic.bindgen]
-#visibility = "pub(crate)"
 
 [imports.nns]
 canister_id = "rrkah-fqaaa-aaaaa-aaaaq-cai"  
@@ -18,7 +16,7 @@ template = "candid/call.hbs"
 methods = ["get_neuron_info"]
 [imports.nns.bindgen]
 Result_5.name = "NeuronResult"
-age_seconds.name = "AGE"
+age_seconds = { name = "AGE", attributes = "#[serde(skip_deserializing)]" }
 NeuronInfo.attributes = "#[derive(CandidType, Deserialize, Debug)]"
 NeuronInfo.record.visibility = ""
 NeuronId.use_type = "MyNeuronId"

@@ -25,8 +25,12 @@ struct Entry {
     service: Option<Item>,
     imports: BTreeMap<String, Item>,
 }
+pub struct Opt {
+    pub is_write: bool,
+    pub line_diff: bool,
+}
 
-pub fn run(path: &Path, is_write: bool) -> Result<()> {
+pub fn run(path: &Path, opt: Opt) -> Result<()> {
     let path = path.join("canister.toml");
     let config = load_toml(&path)?;
     let mut src_dir = &PathBuf::from("./src");
@@ -48,7 +52,7 @@ pub fn run(path: &Path, is_write: bool) -> Result<()> {
         } else {
             info!("Generating main file {}", name.display());
             let res = generate_service(serv)?;
-            output(is_write, &name, res)?;
+            output(&opt, &name, res)?;
         }
     }
     for (name, item) in &config.imports {
@@ -56,34 +60,51 @@ pub fn run(path: &Path, is_write: bool) -> Result<()> {
         let name = path.join(format!("{}.rs", name));
         let res = generate_import(item)?;
         info!("Generating import {}", name.display());
-        output(is_write, &name, res)?;
+        output(&opt, &name, res)?;
     }
     Ok(())
 }
 fn generate_import(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "canister_call")?;
-    let res = compile(&config, &env, &actor, external);
+    let (res, unused) = compile(&config, &env, &actor, external);
+    report_unused(&unused);
     Ok(res)
 }
 fn generate_service(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
     let (config, external) = get_config(item, "stub")?;
-    let res = compile(&config, &env, &actor, external);
+    let (res, unused) = compile(&config, &env, &actor, external);
+    report_unused(&unused);
     Ok(res)
 }
-fn output(is_write: bool, name: &Path, content: String) -> Result<()> {
-    use prettydiff::basic::DiffOp;
+fn output(opt: &Opt, name: &Path, content: String) -> Result<()> {
+    use prettydiff::{basic::DiffOp, text::ContextConfig};
     let content = invoke_rustfmt(content);
-    if is_write {
+    if opt.is_write {
         std::fs::write(name, content)?;
     } else if name.exists() {
         let existing = std::fs::read_to_string(name)?;
-        let diff = prettydiff::diff_chars(&existing, &content).set_highlight_whitespace(false);
-        if matches!(diff.diff()[..], [DiffOp::Equal(_)]) {
-            info!("No diff detected");
+        if opt.line_diff {
+            let diff = prettydiff::diff_lines(&existing, &content).format_with_context(
+                Some(ContextConfig {
+                    context_size: 2,
+                    skipping_marker: "...",
+                }),
+                true,
+            );
+            if diff == "..." {
+                info!("No diff detected");
+            } else {
+                info!("\n{diff}");
+            }
         } else {
-            info!("{}", diff);
+            let diff = prettydiff::diff_chars(&existing, &content).set_highlight_whitespace(false);
+            if matches!(diff.diff()[..], [DiffOp::Equal(_)]) {
+                info!("No diff detected");
+            } else {
+                info!("\n{diff}");
+            }
         }
     } else {
         info!("\n{content}");
@@ -180,4 +201,9 @@ async fn fetch_metadata(id: Principal) -> Result<String> {
         .read_state_canister_metadata(id, "candid:service")
         .await?;
     Ok(String::from_utf8(blob)?)
+}
+fn report_unused(unused: &[String]) {
+    for e in unused {
+        warn!("Path {e} is unused");
+    }
 }

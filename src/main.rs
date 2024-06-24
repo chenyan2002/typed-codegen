@@ -71,6 +71,9 @@ enum Command {
         #[arg(short, long)]
         /// Write the bindgen to disk
         write: bool,
+        #[arg(short, long, conflicts_with("write"))]
+        /// When not writing to disk, report line diff, instead of character diff
+        line_diff: bool,
     },
 }
 impl Command {
@@ -161,7 +164,14 @@ fn main() -> Result<()> {
         Command::Bindgen {
             canister_path,
             write,
-        } => bindgen::run(&canister_path, write)?,
+            line_diff,
+        } => {
+            let opt = bindgen::Opt {
+                is_write: write,
+                line_diff,
+            };
+            bindgen::run(&canister_path, opt)?
+        }
         Command::Candid { mut options } => {
             options.expand_proc_macros = false;
             let (_, db, vfs, target) = load_cargo_project(&options, &bars)?;
