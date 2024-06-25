@@ -20,7 +20,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 fxhash = "0.2.1"
 indicatif = "0.17.8"
 console = "0.15.8"
-candid_parser = { version = "0.2.0-beta.2" }
+candid_parser = { version = "0.2.0-beta.3" }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 serde = "1.0.203"
 candid = { version = "0.10.9" }
@@ -31,6 +31,3 @@ ic-agent = "0.36.0"
 tokio = { version = "1.38.0", features = ["full"] }
 prettydiff = { version = "0.7.0", default-features = false }
 
-[patch.crates-io]
-candid = { path = "../candid/rust/candid" }
-candid_parser = { path = "../candid/rust/candid_parser" }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use candid::types::{Type, TypeEnv};
 use candid_parser::bindings::rust::{compile, Config, ExternalConfig};
 use candid_parser::{
-    bindings::analysis::project_methods, configs::Configs, utils::CandidSource, Deserialize,
+    bindings::analysis::project_methods, configs::Configs, utils::{CandidSource, get_metadata}, Deserialize,
     Principal,
 };
 use log::{info, warn};
@@ -73,7 +73,10 @@ fn generate_import(item: &Item) -> Result<String> {
 }
 fn generate_service(item: &Item) -> Result<String> {
     let (env, actor) = load_candid(item)?;
-    let (config, external) = get_config(item, "stub")?;
+    let (config, mut external) = get_config(item, "stub")?;
+    if let Some(metadata) = get_metadata(&env, &actor) {
+        external.0.insert("metadata".to_string(), metadata);
+    }
     let (res, unused) = compile(&config, &env, &actor, external);
     report_unused(&unused);
     Ok(res)
