@@ -2,10 +2,12 @@ use anyhow::Result;
 use candid::types::{Type, TypeEnv};
 use candid_parser::bindings::rust::{compile, Config, ExternalConfig};
 use candid_parser::{
-    bindings::analysis::project_methods, configs::Configs, utils::{CandidSource, get_metadata}, Deserialize,
-    Principal,
+    bindings::analysis::project_methods,
+    configs::Configs,
+    utils::{get_metadata, CandidSource},
+    Deserialize, Principal,
 };
-use log::{info, warn};
+use log::{error, info, warn};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -85,6 +87,9 @@ fn output(opt: &Opt, name: &Path, content: String) -> Result<()> {
     use prettydiff::{basic::DiffOp, text::ContextConfig};
     let content = invoke_rustfmt(content);
     if opt.is_write {
+        if let Some(p) = name.parent() {
+            std::fs::create_dir_all(p)?;
+        }
         std::fs::write(name, content)?;
     } else if name.exists() {
         let existing = std::fs::read_to_string(name)?;
@@ -207,6 +212,6 @@ async fn fetch_metadata(id: Principal) -> Result<String> {
 }
 fn report_unused(unused: &[String]) {
     for e in unused {
-        warn!("Path {e} is unused");
+        error!("Path {e} is unused");
     }
 }
