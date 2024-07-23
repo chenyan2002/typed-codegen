@@ -132,6 +132,9 @@ fn get_config(item: &Item, target: &str) -> Result<(Config, ExternalConfig)> {
     } else {
         external.0.insert("target".to_string(), target.to_string());
     }
+    if let Some(id) = &item.canister_id {
+        external.0.insert("canister_id".to_string(), id.to_string());
+    }
     let configs = Configs(item.bindgen.clone().unwrap_or_default());
     let config = Config::new(configs);
     Ok((config, external))
