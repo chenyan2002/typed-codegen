@@ -31,3 +31,7 @@ ic-agent = "0.36.0"
 tokio = { version = "1.38.0", features = ["full"] }
 prettydiff = { version = "0.7.0", default-features = false }
 
+[patch.crates-io]
+candid_parser = { git = "https://github.com/dfinity/candid.git", branch = "configs" }
+candid = { git = "https://github.com/dfinity/candid.git", branch = "configs" }
+ic_principal = { git = "https://github.com/dfinity/candid.git", branch = "configs" }

@@ -333,8 +333,7 @@ dependencies = [
 [[package]]
 name = "candid"
 version = "0.10.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7df77a80c72fcd356cf37ff59c812f37ff06dc9a81232b3aff0a308cb5996904"
+source = "git+https://github.com/dfinity/candid.git?branch=configs#9a370eee04e31b27421ead985377c935ab7a7333"
 dependencies = [
  "anyhow",
  "binread",
@@ -356,8 +355,7 @@ dependencies = [
 [[package]]
 name = "candid_derive"
 version = "0.6.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de398570c386726e7a59d9887b68763c481477f9a043fb998a2e09d428df1a9"
+source = "git+https://github.com/dfinity/candid.git?branch=configs#9a370eee04e31b27421ead985377c935ab7a7333"
 dependencies = [
  "lazy_static",
  "proc-macro2",
@@ -368,8 +366,7 @@ dependencies = [
 [[package]]
 name = "candid_parser"
 version = "0.2.0-beta.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fa862dcc8beb3c250b335eaa388f169fa1575bb1476e09c9c78cbef88d510e4"
+source = "git+https://github.com/dfinity/candid.git?branch=configs#9a370eee04e31b27421ead985377c935ab7a7333"
 dependencies = [
  "anyhow",
  "candid",
@@ -1370,8 +1367,7 @@ dependencies = [
 [[package]]
 name = "ic_principal"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1762deb6f7c8d8c2bdee4b6c5a47b60195b74e9b5280faa5ba29692f8e17429c"
+source = "git+https://github.com/dfinity/candid.git?branch=configs#9a370eee04e31b27421ead985377c935ab7a7333"
 dependencies = [
  "arbitrary",
  "crc32fast",

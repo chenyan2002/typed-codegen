@@ -153,7 +153,7 @@ fn load_candid(item: &Item) -> Result<(TypeEnv, Option<Type>)> {
     match item.methods.as_deref() {
         None => (),
         Some([]) => actor = None,
-        Some(methods) => actor = project_methods(&env, &actor, methods),
+        Some(methods) => actor = Some(project_methods(&env, &actor, methods.to_vec())?),
     }
     Ok((env, actor))
 }
